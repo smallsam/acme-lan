@@ -14,6 +14,7 @@ from .base import DnsProvider
 
 class ChallTestSrvProvider(DnsProvider):
     name = "challtestsrv"
+    supports_a = True
 
     def __init__(self, base_url: str) -> None:
         self.base_url = base_url.rstrip("/")
@@ -33,6 +34,22 @@ class ChallTestSrvProvider(DnsProvider):
     def remove_txt(self, record_name: str, value: str) -> None:
         resp = httpx.post(
             f"{self.base_url}/clear-txt",
+            json={"host": self._fqdn(record_name)},
+            timeout=10,
+        )
+        resp.raise_for_status()
+
+    def publish_a(self, record_name: str, ip: str) -> None:
+        resp = httpx.post(
+            f"{self.base_url}/add-a",
+            json={"host": self._fqdn(record_name), "addresses": [ip]},
+            timeout=10,
+        )
+        resp.raise_for_status()
+
+    def remove_a(self, record_name: str, ip: str) -> None:
+        resp = httpx.post(
+            f"{self.base_url}/clear-a",
             json={"host": self._fqdn(record_name)},
             timeout=10,
         )

@@ -47,6 +47,19 @@ class Settings(BaseSettings):
     upstream_finalize_timeout: int = Field(
         default=90, description="Seconds to wait for the upstream order to become valid."
     )
+    # How this server proves control to the upstream CA:
+    #   dns-01  — publish a _acme-challenge TXT record (works for internal-only hosts).
+    #   http-01 — answer from an edge HTTP server the upstream can reach (needs the edge
+    #             to be publicly reachable, e.g. wildcard DNS -> edge public IP).
+    upstream_challenge: str = Field(default="dns-01")
+    edge_http_port: int = Field(
+        default=80, description="Port the edge HTTP-01 responder listens on."
+    )
+    edge_public_ip: str = Field(
+        default="",
+        description="IP that identifiers should resolve to for edge http-01 (A-record "
+        "publishing); only used by providers that support A records, e.g. challtestsrv.",
+    )
 
     # --- DNS provider used to satisfy the upstream DNS-01 challenge ---
     dns_provider: str = Field(default="cloudflare", description="cloudflare | challtestsrv")
@@ -55,6 +68,11 @@ class Settings(BaseSettings):
     )
     # Cloudflare
     cloudflare_api_token: str = Field(default="")
+    # acme-dns (delegate _acme-challenge via CNAME to an acme-dns instance)
+    acmedns_api_url: str = Field(default="")
+    acmedns_username: str = Field(default="")
+    acmedns_password: str = Field(default="")
+    acmedns_subdomain: str = Field(default="")
     # challtestsrv (test mock)
     challtestsrv_url: str = Field(default="http://localhost:8055")
 
@@ -71,9 +89,18 @@ class Settings(BaseSettings):
     # Generate with: Fernet.generate_key() from cryptography.fernet.
     secret_key: str = Field(default="")
 
-    # --- Auto-renew (Phase 3) ---
+    # --- Auto-renew scheduler ---
     renew_before_days: int = Field(
         default=30, description="Renew certificates with fewer than this many days remaining."
+    )
+    auto_renew_enabled: bool = Field(
+        default=False, description="Run a background loop that renews due managed hosts."
+    )
+    renew_check_interval_seconds: int = Field(default=3600)
+
+    # --- Maintenance / GC ---
+    nonce_max_age_seconds: int = Field(
+        default=3600, description="Unused nonces older than this are purged."
     )
 
 

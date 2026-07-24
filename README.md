@@ -62,6 +62,13 @@ Phases 1 and 2 are implemented; see [`docs/ROADMAP.md`](docs/ROADMAP.md) for the
   pushes cert + key to the device (`POST /api/hosts/{id}/renew`); renewal selection picks
   hosts expiring within `ACME_LAN_RENEW_BEFORE_DAYS`.
 
+**Phase 4 — hardening / ops:**
+
+- Edge **HTTP-01 upstream** path (`ACME_LAN_UPSTREAM_CHALLENGE=http-01`) as a pluggable
+  alternative to DNS-01, plus an **acme-dns** DNS provider.
+- Background **auto-renew scheduler** (`ACME_LAN_AUTO_RENEW_ENABLED`) and nonce/order GC.
+- `Dockerfile` (serves the pre-built dashboard) and structured logging.
+
 ## Quickstart
 
 ```bash

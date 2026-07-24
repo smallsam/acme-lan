@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -11,9 +12,11 @@ from fastapi.staticfiles import StaticFiles
 
 from .acme import accounts, authz, certificates, directory, orders
 from .acme.errors import AcmeError, acme_error_handler
+from .config import get_settings
 from .db import init_db
 from .management import api as management_api
 from .management import hosts_api
+from .scheduler import run_scheduler
 
 FRONTEND_DIST = Path(__file__).resolve().parent / "web" / "dist"
 
@@ -21,7 +24,16 @@ FRONTEND_DIST = Path(__file__).resolve().parent / "web" / "dist"
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await init_db()
-    yield
+    stop_event = asyncio.Event()
+    task: asyncio.Task | None = None
+    if get_settings().auto_renew_enabled:
+        task = asyncio.create_task(run_scheduler(stop_event))
+    try:
+        yield
+    finally:
+        stop_event.set()
+        if task is not None:
+            await task
 
 
 def create_app() -> FastAPI:

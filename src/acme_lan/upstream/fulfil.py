@@ -21,18 +21,29 @@ from .client import build_client
 logger = logging.getLogger("acme_lan.upstream")
 
 
-def _select_dns01(authz: messages.AuthorizationResource) -> messages.ChallengeBody:
+def _select_challenge(
+    authz: messages.AuthorizationResource, chall_cls
+) -> messages.ChallengeBody:
     for challb in authz.body.challenges:
-        if isinstance(challb.chall, challenges.DNS01):
+        if isinstance(challb.chall, chall_cls):
             return challb
     raise RuntimeError(
-        f"Upstream offered no dns-01 challenge for {authz.body.identifier.value!r}"
+        f"Upstream offered no {chall_cls.typ} challenge for {authz.body.identifier.value!r}"
     )
 
 
 def fulfil_order(csr_pem: str) -> str:
-    """Obtain a certificate chain from the upstream CA for the given CSR (PEM string)."""
+    """Obtain a certificate chain from the upstream CA for the given CSR (PEM string).
+
+    Dispatches to the configured upstream challenge mode (dns-01 or edge http-01).
+    """
     settings = get_settings()
+    if settings.upstream_challenge == "http-01":
+        return _fulfil_http01(csr_pem, settings)
+    return _fulfil_dns01(csr_pem, settings)
+
+
+def _fulfil_dns01(csr_pem: str, settings) -> str:
     acme_client, account_key = build_client(settings)
     provider = get_dns_provider(settings)
 
@@ -43,7 +54,7 @@ def fulfil_order(csr_pem: str) -> str:
     try:
         for authz in orderr.authorizations:
             domain = authz.body.identifier.value
-            challb = _select_dns01(authz)
+            challb = _select_challenge(authz, challenges.DNS01)
             response, validation = challb.chall.response_and_validation(account_key)
             record_name = f"_acme-challenge.{domain}"
             logger.info("Publishing TXT %s for upstream dns-01", record_name)
@@ -67,6 +78,50 @@ def fulfil_order(csr_pem: str) -> str:
                 provider.remove_txt(record_name, validation)
             except Exception:  # noqa: BLE001 - cleanup is best-effort
                 logger.warning("Failed to clean up TXT %s", record_name, exc_info=True)
+
+
+def _fulfil_http01(csr_pem: str, settings) -> str:
+    """Fulfil the upstream order via edge http-01: answer from a local edge HTTP server."""
+    from .edge import EdgeHttpResponder
+
+    acme_client, account_key = build_client(settings)
+    provider = get_dns_provider(settings)
+    orderr = acme_client.new_order(csr_pem.encode("ascii"))
+
+    edge = EdgeHttpResponder(settings.edge_http_port)
+    edge.start()
+    work: list[tuple[messages.ChallengeBody, object]] = []
+    published_a: list[str] = []
+    try:
+        for authz in orderr.authorizations:
+            domain = authz.body.identifier.value
+            challb = _select_challenge(authz, challenges.HTTP01)
+            response, validation = challb.chall.response_and_validation(account_key)
+            token = challb.chall.encode("token")
+            edge.register(token, validation)
+            # If the provider can publish A records and an edge IP is configured, point the
+            # identifier at our edge so the upstream reaches us (used in tests; in production
+            # a wildcard A record already points at the edge).
+            if settings.edge_public_ip and getattr(provider, "supports_a", False):
+                provider.publish_a(domain, settings.edge_public_ip)
+                published_a.append(domain)
+            work.append((challb, response))
+
+        for challb, response in work:
+            acme_client.answer_challenge(challb, response)
+
+        deadline = datetime.datetime.now() + datetime.timedelta(
+            seconds=settings.upstream_finalize_timeout
+        )
+        finalized = acme_client.finalize_order(orderr, deadline)
+        return finalized.fullchain_pem
+    finally:
+        edge.stop()
+        for domain in published_a:
+            try:
+                provider.remove_a(domain, settings.edge_public_ip)
+            except Exception:  # noqa: BLE001 - cleanup is best-effort
+                logger.warning("Failed to clean up A record for %s", domain, exc_info=True)
 
 
 def revoke_certificate(cert_pem: str, reason: int | None = None) -> None:

@@ -46,11 +46,19 @@ Phase 1 is implemented; Phases 2–4 are planned.
 Deferred to Phase 4: a background scheduler that periodically renews due hosts (the
 selection + one-shot renew/deploy are implemented and API-triggerable today).
 
-## Phase 4 — Hardening / ops
+## Phase 4 — Hardening / ops  ✅ (partial; remaining items noted)
 
-- Alternative upstream fulfilment: **edge HTTP-01 / TLS-ALPN-01** (server listens on the
-  public edge IP with wildcard DNS pointing at it) as a pluggable option to DNS-01.
-- More DNS providers: **RFC 2136** (nsupdate/TSIG) and **acme-dns** delegation.
-- Downstream `dns-01` and `tls-alpn-01` challenge validation (enables wildcards).
-- Order/nonce garbage collection, structured logging + metrics, container image + compose
-  for deployment, and backup/restore of the DB and credential store.
+- **Edge HTTP-01 upstream** (`ACME_LAN_UPSTREAM_CHALLENGE=http-01`): the alternative to
+  DNS-01. acme-lan answers the upstream's http-01 from an edge HTTP responder
+  (`acme_lan/upstream/edge.py`); with wildcard DNS pointing at the edge IP this is faster
+  than DNS propagation. Covered by a Pebble e2e.
+- **acme-dns** DNS provider (`acme_lan/dns/acmedns.py`), pluggable alongside Cloudflare.
+- **Auto-renew scheduler** (`acme_lan/scheduler.py`): a background loop
+  (`ACME_LAN_AUTO_RENEW_ENABLED`) that renews due managed hosts on an interval.
+- **Garbage collection** (`acme_lan/maintenance.py`): purge stale nonces and expired
+  non-valid orders.
+- **Container image** (`Dockerfile`, runs the pre-built dashboard) and structured logging.
+
+Still open (future work): TLS-ALPN-01 upstream, RFC 2136 (nsupdate/TSIG) provider,
+downstream `dns-01` / `tls-alpn-01` validation for wildcards, Prometheus metrics, and
+DB/credential backup-restore tooling.

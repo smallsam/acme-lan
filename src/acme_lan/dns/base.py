@@ -24,3 +24,14 @@ class DnsProvider(abc.ABC):
     @abc.abstractmethod
     def remove_txt(self, record_name: str, value: str) -> None:
         """Remove the TXT record previously published for ``record_name`` / ``value``."""
+
+    # A-record publishing is optional and only needed for the edge http-01 upstream mode
+    # when the identifier does not already resolve to the edge (e.g. in tests). Providers
+    # that rely on pre-existing wildcard DNS leave ``supports_a`` False.
+    supports_a: bool = False
+
+    def publish_a(self, record_name: str, ip: str) -> None:  # pragma: no cover - optional
+        raise NotImplementedError
+
+    def remove_a(self, record_name: str, ip: str) -> None:  # pragma: no cover - optional
+        raise NotImplementedError

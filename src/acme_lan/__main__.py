@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import logging
+
 import uvicorn
 
 from .config import get_settings
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
     settings = get_settings()
     host = "0.0.0.0"  # noqa: S104 - a LAN service is meant to listen broadly
     port = 8000
