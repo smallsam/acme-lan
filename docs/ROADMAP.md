@@ -14,17 +14,18 @@ Phase 1 is implemented; Phases 2–4 are planned.
 - SQLite storage; single FastAPI app.
 - End-to-end test: a real ACME client → acme-lan → **Pebble** upstream → valid chain.
 
-## Phase 2 — Web dashboard + realtime TLS health
+## Phase 2 — Web dashboard + realtime TLS health  ✅
 
-- REST API over the same DB: list orders/certificates, issuance & renewal history, detail.
-- **Realtime TLS health probe**: when the dashboard is viewed, open a raw TLS connection to
-  each managed endpoint's configured `host:port` — *not* assuming HTTPS, so it works for
-  LDAPS / SMTPS / etc. — read the leaf certificate and report expiry, chain validity, SAN
-  match, and days remaining (a `check_ssl_cert`-style probe via `ssl` + `cryptography`).
-- **Vue 3 + Vite + TypeScript + TailwindCSS** SPA: certificate table with health badges,
-  an issue/renew timeline, and a manual "re-check now" action.
-- Single-tenant homelab auth: one admin, session-cookie login (or trusted reverse-proxy
-  header). No multi-user roles.
+- REST API over the same DB (`/api/...`): certificate list + detail, order stats.
+- **Realtime TLS health probe** (`acme_lan/health.py`): opens a raw TLS connection to a
+  `host:port` — *not* assuming HTTPS, so it works for LDAPS / SMTPS / etc. — reads the leaf
+  certificate and reports expiry, days remaining, chain trust, SAN match, and self-signed
+  status (a `check_ssl_cert`-style probe via `ssl` + `cryptography`). Exposed as
+  `POST /api/health/probe` (ad hoc) and `GET /api/certificates/{id}/health`.
+- **Vue 3 + Vite + TypeScript + TailwindCSS** SPA (`src/acme_lan/web`): certificate table
+  with live health badges, a "re-check now" action, and an ad-hoc TLS probe form.
+- Single-tenant homelab auth: an optional admin bearer token (`ACME_LAN_ADMIN_TOKEN`) that
+  gates the management API only; the ACME endpoints are never gated.
 
 ## Phase 3 — Managed hosts + device push (certgrinder-style automation)
 

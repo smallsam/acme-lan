@@ -17,3 +17,7 @@ __pycache__/
 
 # uv
 .uv/
+
+# Frontend
+src/acme_lan/web/node_modules/
+src/acme_lan/web/*.tsbuildinfo

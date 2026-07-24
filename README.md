@@ -34,19 +34,25 @@ one server that *does* hold DNS credentials performs the real DNS-01 issuance up
 
 ## Status
 
-**Phase 1 (this milestone): the core ACME proxy + end-to-end tests.** The full roadmap —
-web dashboard with realtime TLS health checks, a device registry with credential store and
-cert-push plugins (ESXi, SSH, printers…), and an auto-renew scheduler — is tracked in
-[`docs/ROADMAP.md`](docs/ROADMAP.md).
+Phases 1 and 2 are implemented; see [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full plan.
 
-Implemented now:
+**Phase 1 — core ACME proxy:**
 
 - RFC 8555 server: directory, newNonce, newAccount, newOrder, authorizations, challenges
   (http-01 downstream validation), finalize, certificate download, revoke.
 - Upstream client (certbot's `acme` library) that issues via **DNS-01**.
 - DNS providers: **Cloudflare** (real) and **pebble-challtestsrv** (tests). Pluggable.
 - SQLite storage; single self-contained FastAPI app.
-- End-to-end test: real `certbot` → acme-lan → **Pebble** upstream → a valid chain.
+- End-to-end test: real ACME client → acme-lan → **Pebble** upstream → a valid chain.
+
+**Phase 2 — web dashboard + realtime TLS health:**
+
+- Management REST API (`/api/...`): certificate list/detail, order stats.
+- Realtime TLS health probe (raw TLS, works for LDAPS/SMTPS/etc.) via
+  `POST /api/health/probe` and `GET /api/certificates/{id}/health`.
+- Vue 3 + Vite + TailwindCSS dashboard (`src/acme_lan/web`) with live health badges and an
+  ad-hoc probe form, served by the app when built.
+- Optional admin bearer token (`ACME_LAN_ADMIN_TOKEN`) gating the management API only.
 
 ## Quickstart
 

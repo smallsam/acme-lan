@@ -58,6 +58,24 @@ class Settings(BaseSettings):
     # challtestsrv (test mock)
     challtestsrv_url: str = Field(default="http://localhost:8055")
 
+    # --- Web dashboard / management API (single-tenant homelab) ---
+    # If set, the management API and dashboard require this bearer token. Empty = open
+    # (intended for trusted LANs / reverse-proxy auth). The ACME endpoints are never gated.
+    admin_token: str = Field(default="")
+    # Default port used when health-checking a certificate's domain.
+    health_default_port: int = Field(default=443)
+    health_timeout: float = Field(default=7.0)
+
+    # --- Credential store (Phase 3) ---
+    # Fernet key (urlsafe base64, 32 bytes) used to encrypt stored device credentials.
+    # Generate with: Fernet.generate_key() from cryptography.fernet.
+    secret_key: str = Field(default="")
+
+    # --- Auto-renew (Phase 3) ---
+    renew_before_days: int = Field(
+        default=30, description="Renew certificates with fewer than this many days remaining."
+    )
+
 
 _settings: Settings | None = None
 
