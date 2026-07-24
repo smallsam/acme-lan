@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Runtime data (DB, upstream account key, issued state)
+/data/
+*.sqlite
+*.sqlite-journal
+
+# Local config / secrets
+.env
+
+# uv
+.uv/

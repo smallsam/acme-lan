@@ -1,0 +1,41 @@
+# Upstream CA for end-to-end tests: Pebble (a small RFC 8555 test CA) plus
+# pebble-challtestsrv (a mock DNS server Pebble queries during validation).
+#
+#   docker compose -f docker-compose.test.yml up -d
+#   uv run pytest tests/e2e -q
+#   docker compose -f docker-compose.test.yml down -v
+#
+# Pebble's ACME directory:      https://localhost:14000/dir  (self-signed; verify off)
+# Pebble management (roots):    https://localhost:15000
+# challtestsrv management API:  http://localhost:8055
+
+services:
+  pebble:
+    image: ghcr.io/letsencrypt/pebble:latest
+    command: -config test/config/pebble-config.json -dnsserver 10.30.50.3:8053
+    environment:
+      # Don't add random VA sleeps, and validate against our challtestsrv only.
+      PEBBLE_VA_NOSLEEP: "1"
+    ports:
+      - "14000:14000"
+      - "15000:15000"
+    networks:
+      acmenet:
+        ipv4_address: 10.30.50.2
+
+  challtestsrv:
+    image: ghcr.io/letsencrypt/pebble-challtestsrv:latest
+    # Don't answer A/AAAA by default; we only publish TXT for DNS-01.
+    command: -defaultIPv6 "" -defaultIPv4 ""
+    ports:
+      - "8055:8055"
+    networks:
+      acmenet:
+        ipv4_address: 10.30.50.3
+
+networks:
+  acmenet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.30.50.0/24

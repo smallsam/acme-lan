@@ -1,0 +1,113 @@
+"""Database models for ACME server state (RFC 8555 objects)."""
+
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, datetime
+from typing import Any
+
+from sqlalchemy import JSON, Column
+from sqlmodel import Field, SQLModel
+
+
+def _uuid() -> str:
+    return uuid.uuid4().hex
+
+
+def utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
+# --- ACME status vocabularies (RFC 8555 §7.1.6) ---
+class OrderStatus:
+    PENDING = "pending"
+    READY = "ready"
+    PROCESSING = "processing"
+    VALID = "valid"
+    INVALID = "invalid"
+
+
+class AuthzStatus:
+    PENDING = "pending"
+    VALID = "valid"
+    INVALID = "invalid"
+    DEACTIVATED = "deactivated"
+    EXPIRED = "expired"
+    REVOKED = "revoked"
+
+
+class ChallengeStatus:
+    PENDING = "pending"
+    PROCESSING = "processing"
+    VALID = "valid"
+    INVALID = "invalid"
+
+
+class Account(SQLModel, table=True):
+    __tablename__ = "account"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    status: str = Field(default="valid")
+    key_thumbprint: str = Field(index=True)
+    jwk: dict[str, Any] = Field(sa_column=Column(JSON))
+    contact: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    terms_agreed: bool = False
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class Order(SQLModel, table=True):
+    __tablename__ = "acme_order"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    account_id: str = Field(foreign_key="account.id", index=True)
+    status: str = Field(default=OrderStatus.PENDING)
+    identifiers: list[dict[str, str]] = Field(sa_column=Column(JSON))
+    not_before: str | None = None
+    not_after: str | None = None
+    error: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))
+    certificate_id: str | None = Field(default=None, foreign_key="certificate.id")
+    expires_at: datetime = Field(default_factory=utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class Authorization(SQLModel, table=True):
+    __tablename__ = "authorization"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    order_id: str = Field(foreign_key="acme_order.id", index=True)
+    identifier_type: str = "dns"
+    identifier_value: str = ""
+    wildcard: bool = False
+    status: str = Field(default=AuthzStatus.PENDING)
+    expires_at: datetime = Field(default_factory=utcnow)
+
+
+class Challenge(SQLModel, table=True):
+    __tablename__ = "challenge"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    authz_id: str = Field(foreign_key="authorization.id", index=True)
+    type: str = "http-01"
+    token: str = ""
+    status: str = Field(default=ChallengeStatus.PENDING)
+    validated_at: datetime | None = None
+    error: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))
+
+
+class Certificate(SQLModel, table=True):
+    __tablename__ = "certificate"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    order_id: str = Field(index=True)
+    pem_chain: str = ""
+    serial: str | None = None
+    subject: str | None = None
+    not_after: datetime | None = None
+    issued_at: datetime = Field(default_factory=utcnow)
+
+
+class Nonce(SQLModel, table=True):
+    __tablename__ = "nonce"
+
+    value: str = Field(primary_key=True)
+    created_at: datetime = Field(default_factory=utcnow)

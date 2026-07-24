@@ -1,0 +1,58 @@
+[project]
+name = "acme-lan"
+version = "0.1.0"
+description = "Internal ACME server that fulfils standard ACME clients by proxying to an upstream CA via DNS-01."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "smallsam" }]
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "acme>=2.11",
+    "josepy>=1.14",
+    "cryptography>=42",
+    "sqlmodel>=0.0.22",
+    "aiosqlite>=0.20",
+    "greenlet>=3.0",
+    "httpx>=0.27",
+    "pydantic-settings>=2.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "certbot>=2.11",
+]
+
+[project.scripts]
+acme-lan = "acme_lan.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/acme_lan"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]
+# B008: FastAPI's Depends()/Query() defaults are the framework's intended idiom.
+ignore = ["B008"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
