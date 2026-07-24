@@ -107,6 +107,17 @@ class Certificate(SQLModel, table=True):
     domains: list[str] = Field(default_factory=list, sa_column=Column(JSON))
     not_after: datetime | None = None
     issued_at: datetime = Field(default_factory=utcnow)
+    # Where the private key (if acme-lan holds one) is stored: "none" (key stayed on the
+    # device / external client), "local", "azure_keyvault" or "vault".
+    key_storage: str = "none"
+    key_reference: str | None = None  # backend-specific handle to fetch the key
+    # Lifecycle: retire a cert so it stops triggering expiry warnings / auto-renewal.
+    retired: bool = False
+    retired_at: datetime | None = None
+    retired_reason: str | None = None
+    # Set when an expiry warning has been sent for this cert (a renewal is a new row, so it
+    # gets warned about afresh).
+    expiry_warned_at: datetime | None = None
 
 
 class StoredCredential(SQLModel, table=True):

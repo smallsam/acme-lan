@@ -144,6 +144,8 @@ async def fresh_db(tmp_path):
 
     await init_db()
     yield
+    # Dispose the engine on the current loop so aiosqlite threads don't outlive it.
+    await db.reset_engine()
 
 
 @pytest.fixture

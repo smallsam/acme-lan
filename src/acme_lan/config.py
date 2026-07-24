@@ -103,6 +103,18 @@ class Settings(BaseSettings):
         default=3600, description="Unused nonces older than this are purged."
     )
 
+    # --- Expiry warnings / notifications ---
+    expiry_warn_days: int = Field(
+        default=21, description="Warn about (non-retired) certificates expiring within N days."
+    )
+    notify_check_interval_seconds: int = Field(default=21600)  # 6h
+    # Postmark email
+    postmark_server_token: str = Field(default="")
+    notify_email_from: str = Field(default="")
+    notify_email_to: str = Field(default="")  # comma-separated
+    # Generic webhook (POST JSON)
+    notify_webhook_url: str = Field(default="")
+
 
 _settings: Settings | None = None
 
