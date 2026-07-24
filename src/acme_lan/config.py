@@ -89,6 +89,17 @@ class Settings(BaseSettings):
     # Generate with: Fernet.generate_key() from cryptography.fernet.
     secret_key: str = Field(default="")
 
+    # --- Certificate / key storage backend ---
+    # local | azure_keyvault | vault. "local" keeps the (Fernet-encrypted) key in the DB.
+    cert_store_backend: str = Field(default="local")
+    # Azure Key Vault (uses DefaultAzureCredential unless a token is injected in tests).
+    azure_keyvault_url: str = Field(default="")
+    # HashiCorp Vault (KV v2).
+    vault_url: str = Field(default="")
+    vault_token: str = Field(default="")
+    vault_mount: str = Field(default="secret")
+    vault_path_prefix: str = Field(default="acme-lan")
+
     # --- Auto-renew scheduler ---
     renew_before_days: int = Field(
         default=30, description="Renew certificates with fewer than this many days remaining."

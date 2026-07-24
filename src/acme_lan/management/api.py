@@ -120,6 +120,29 @@ async def get_certificate(
     return view
 
 
+@router.get("/certificates/{certificate_id}/key")
+async def get_certificate_key(
+    certificate_id: str, session: AsyncSession = Depends(get_session)
+) -> dict[str, Any]:
+    """Retrieve the stored private key for a cert (admin only; sensitive)."""
+    from ..certstore.factory import get_cert_store
+
+    cert = await session.get(Certificate, certificate_id)
+    if cert is None:
+        raise HTTPException(status_code=404, detail="Certificate not found")
+    if cert.key_storage == "none" or not cert.key_reference:
+        raise HTTPException(status_code=404, detail="No private key stored for this certificate")
+    store = get_cert_store()
+    if store.name != cert.key_storage:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Key is in backend {cert.key_storage!r} but the active backend is "
+            f"{store.name!r}",
+        )
+    bundle = await store.fetch(cert.key_reference)
+    return {"key_storage": cert.key_storage, "key_pem": bundle.key_pem}
+
+
 @router.get("/certificates/{certificate_id}/health")
 async def certificate_health(
     certificate_id: str,

@@ -18,6 +18,7 @@ from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .certstore.factory import get_cert_store
 from .credentials import DecryptedCredential, decrypt_secret
 from .deploy.base import DeployContext, DeployResult
 from .deploy.factory import get_deploy_plugin
@@ -85,7 +86,11 @@ async def renew_and_deploy(
         )
         return fullchain, key_pem, plugin.deploy(ctx)
 
-    fullchain, _key_pem, result = await run_in_threadpool(_work)
+    fullchain, key_pem, result = await run_in_threadpool(_work)
+
+    # Persist the cert + key in the configured storage backend (local DB / Key Vault / Vault).
+    store = get_cert_store()
+    key_reference = await store.store(host.name or list(host.domains)[0], fullchain, key_pem)
 
     leaf = x509.load_pem_x509_certificates(fullchain.encode())[0]
     cert = Certificate(
@@ -95,6 +100,8 @@ async def renew_and_deploy(
         serial=format(leaf.serial_number, "x"),
         subject=leaf.subject.rfc4514_string(),
         not_after=leaf.not_valid_after_utc,
+        key_storage=store.name if key_pem else "none",
+        key_reference=key_reference,
     )
     session.add(cert)
     host.last_deployed_at = utcnow()

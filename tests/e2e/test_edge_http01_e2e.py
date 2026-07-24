@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 
 from cryptography import x509
+from cryptography.fernet import Fernet
 from cryptography.x509.oid import ExtensionOID
 
 # Pebble validates http-01 on this port (its config's httpPort).
@@ -27,6 +28,7 @@ async def test_edge_http01_issuance_via_pebble(pebble, tmp_path):
     os.environ["ACME_LAN_UPSTREAM_CHALLENGE"] = "http-01"
     os.environ["ACME_LAN_EDGE_HTTP_PORT"] = PEBBLE_HTTP_PORT
     os.environ["ACME_LAN_EDGE_PUBLIC_IP"] = "127.0.0.1"
+    os.environ["ACME_LAN_SECRET_KEY"] = Fernet.generate_key().decode()
 
     from acme_lan import config, db
 

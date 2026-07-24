@@ -148,6 +148,18 @@ class ManagedHost(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow)
 
 
+class KeyMaterial(SQLModel, table=True):
+    """Local backend storage for a cert + (Fernet-encrypted) private key bundle."""
+
+    __tablename__ = "key_material"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    name: str = ""
+    cert_pem: str = ""
+    key_encrypted: str | None = None  # Fernet ciphertext, or None if no key stored
+    created_at: datetime = Field(default_factory=utcnow)
+
+
 class Nonce(SQLModel, table=True):
     __tablename__ = "nonce"
 

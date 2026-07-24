@@ -55,6 +55,14 @@ async def test_renew_and_deploy_local(fresh_db, tmp_path):
     assert cert.domains == ["printer.lan.test"]
     assert host.last_status == "deployed"
 
+    # The issued key was persisted in the configured store (local) and is retrievable.
+    assert cert.key_storage == "local"
+    assert cert.key_reference
+    from acme_lan.certstore.factory import get_cert_store
+
+    bundle = await get_cert_store().fetch(cert.key_reference)
+    assert bundle.key_pem is not None
+
 
 async def test_hosts_needing_renewal(fresh_db):
     async with session_scope() as session:

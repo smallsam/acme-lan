@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 
 from cryptography import x509
+from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives.serialization import (
     Encoding,
     PublicFormat,
@@ -25,6 +26,7 @@ async def test_host_issuance_and_deploy_via_pebble(pebble, tmp_path):
     os.environ["ACME_LAN_DNS_PROVIDER"] = "challtestsrv"
     os.environ["ACME_LAN_CHALLTESTSRV_URL"] = pebble["challtestsrv"]
     os.environ["ACME_LAN_UPSTREAM_ACCOUNT_KEY_PATH"] = str(tmp_path / "acct.key")
+    os.environ["ACME_LAN_SECRET_KEY"] = Fernet.generate_key().decode()
 
     from acme_lan import config, db
 

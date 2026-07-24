@@ -21,6 +21,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Remote key/cert storage backends (only needed if you select them).
+storage = [
+    "azure-identity>=1.17",
+    "azure-keyvault-secrets>=4.8",
+    "hvac>=2.3",
+]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
