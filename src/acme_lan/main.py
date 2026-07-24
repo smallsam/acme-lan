@@ -13,6 +13,7 @@ from .acme import accounts, authz, certificates, directory, orders
 from .acme.errors import AcmeError, acme_error_handler
 from .db import init_db
 from .management import api as management_api
+from .management import hosts_api
 
 FRONTEND_DIST = Path(__file__).resolve().parent / "web" / "dist"
 
@@ -35,6 +36,7 @@ def create_app() -> FastAPI:
     for module in (directory, accounts, orders, authz, certificates):
         app.include_router(module.router)
     app.include_router(management_api.router)
+    app.include_router(hosts_api.router)
 
     @app.get("/healthz", include_in_schema=False)
     async def healthz() -> dict[str, str]:

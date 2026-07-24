@@ -17,6 +17,7 @@ import httpx
 import pytest
 import uvicorn
 from cryptography import x509
+from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
@@ -111,6 +112,29 @@ def _wait_http(url: str, *, verify: bool = True, timeout: float = 30.0) -> None:
             last = exc
         time.sleep(0.5)
     raise RuntimeError(f"Timed out waiting for {url}: {last}")
+
+
+@pytest.fixture
+async def fresh_db(tmp_path):
+    """Configure a clean temp database (+ a Fernet secret key) and initialise it.
+
+    Tests use ``acme_lan.db.session_scope`` to seed rows and ``create_app`` for HTTP.
+    """
+    os.environ.pop("ACME_LAN_ADMIN_TOKEN", None)
+    os.environ["ACME_LAN_EXTERNAL_URL"] = "http://localhost:8000"
+    os.environ["ACME_LAN_DATABASE_URL"] = f"sqlite+aiosqlite:///{tmp_path}/fresh.sqlite"
+    os.environ["ACME_LAN_SECRET_KEY"] = Fernet.generate_key().decode()
+
+    from acme_lan import config, db
+
+    config.reset_settings_cache()
+    db._engine = None
+    db._sessionmaker = None
+
+    from acme_lan.db import init_db
+
+    await init_db()
+    yield
 
 
 @pytest.fixture

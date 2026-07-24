@@ -98,12 +98,43 @@ class Certificate(SQLModel, table=True):
     __tablename__ = "certificate"
 
     id: str = Field(default_factory=_uuid, primary_key=True)
-    order_id: str = Field(index=True)
+    order_id: str | None = Field(default=None, index=True)
+    # Set when acme-lan itself issued the cert for a managed host (no external ACME client).
+    host_id: str | None = Field(default=None, index=True)
     pem_chain: str = ""
     serial: str | None = None
     subject: str | None = None
+    domains: list[str] = Field(default_factory=list, sa_column=Column(JSON))
     not_after: datetime | None = None
     issued_at: datetime = Field(default_factory=utcnow)
+
+
+class StoredCredential(SQLModel, table=True):
+    __tablename__ = "stored_credential"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    name: str = ""
+    kind: str = "password"  # "password" | "ssh_key"
+    username: str = ""
+    secret_encrypted: str = ""  # Fernet ciphertext of the password or private key
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class ManagedHost(SQLModel, table=True):
+    __tablename__ = "managed_host"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    name: str = ""
+    domains: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    address: str = ""  # host / IP to deploy to and health-check
+    port: int = 443
+    deploy_plugin: str = "local"
+    credential_id: str | None = Field(default=None, foreign_key="stored_credential.id")
+    config: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    enabled: bool = True
+    last_deployed_at: datetime | None = None
+    last_status: str | None = None
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class Nonce(SQLModel, table=True):

@@ -82,6 +82,10 @@ export const api = {
     fetch(`/api/hosts/${id}`, { method: 'DELETE', headers: headers() }).then((r) => {
       if (!r.ok) throw new Error(`${r.status}`)
     }),
+  renewHost: (id: string): Promise<{ ok: boolean; detail: string; certificate_id: string }> =>
+    fetch(`/api/hosts/${id}/renew`, { method: 'POST', headers: headers() }).then(handle),
+  deployPlugins: (): Promise<string[]> =>
+    fetch('/api/deploy-plugins', { headers: headers() }).then(handle),
 }
 
 export interface ManagedHost {

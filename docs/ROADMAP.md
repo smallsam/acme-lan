@@ -27,18 +27,24 @@ Phase 1 is implemented; Phases 2–4 are planned.
 - Single-tenant homelab auth: an optional admin bearer token (`ACME_LAN_ADMIN_TOKEN`) that
   gates the management API only; the ACME endpoints are never gated.
 
-## Phase 3 — Managed hosts + device push (certgrinder-style automation)
+## Phase 3 — Managed hosts + device push (certgrinder-style automation)  ✅
 
-- **Host registry**: register endpoints that can't run an ACME client (ESXi, iDRAC/iLO,
-  printers, switches), each with its domain(s), target `host:port`, and a deploy plugin.
-- **Credential repo**: encrypted store (Fernet/age, key from env/KMS) for the
-  username/password or SSH keys used to log in and install certificates.
-- **Deploy plugin interface** — `deploy(host, cert, key, chain)` implementations:
-  - `ssh` — scp the cert + run a reload command,
-  - `esxi` — upload to `/etc/vmware/ssl` and restart `hostd`,
-  - a template for adding vendor-specific plugins (printers via IPP, etc.).
-- **Auto-renew scheduler**: renew before expiry via the Phase-1 proxy, invoke the deploy
-  plugin, then re-probe health to confirm the new cert is actually live on the device.
+- **Host registry** (`ManagedHost`): endpoints that can't run an ACME client (ESXi, iDRAC,
+  printers, switches), each with domain(s), target address/port, deploy plugin and config.
+  Full CRUD via `/api/hosts`.
+- **Credential repo** (`acme_lan/credentials.py`, `StoredCredential`): Fernet-encrypted
+  store (key from `ACME_LAN_SECRET_KEY`) for device passwords / SSH keys. Secrets are
+  write-only over the API and only decrypted to perform a deploy.
+- **Deploy plugin interface** (`acme_lan/deploy/`): `deploy(ctx)` with a `local` plugin
+  (write files + reload command) and an `ssh` plugin (SFTP upload + reload over paramiko);
+  a factory/registry makes adding vendor plugins straightforward.
+- **Issue-and-deploy** (`acme_lan/hosts.py`): for a managed host, acme-lan generates the
+  key + CSR, issues via the Phase-1 upstream proxy (DNS-01), pushes cert + key to the
+  device, and records the result. `hosts_needing_renewal()` selects certs expiring within
+  `ACME_LAN_RENEW_BEFORE_DAYS`; `POST /api/hosts/{id}/renew` runs the whole flow.
+
+Deferred to Phase 4: a background scheduler that periodically renews due hosts (the
+selection + one-shot renew/deploy are implemented and API-triggerable today).
 
 ## Phase 4 — Hardening / ops
 

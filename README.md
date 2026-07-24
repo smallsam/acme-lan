@@ -54,6 +54,14 @@ Phases 1 and 2 are implemented; see [`docs/ROADMAP.md`](docs/ROADMAP.md) for the
   ad-hoc probe form, served by the app when built.
 - Optional admin bearer token (`ACME_LAN_ADMIN_TOKEN`) gating the management API only.
 
+**Phase 3 — managed hosts + device push:**
+
+- Host registry + Fernet-encrypted credential store for devices that can't run ACME.
+- Deploy plugins (`local`, `ssh`) with a registry for adding more.
+- For a managed host, acme-lan generates the key + CSR, issues via the upstream proxy, and
+  pushes cert + key to the device (`POST /api/hosts/{id}/renew`); renewal selection picks
+  hosts expiring within `ACME_LAN_RENEW_BEFORE_DAYS`.
+
 ## Quickstart
 
 ```bash
