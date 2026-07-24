@@ -35,6 +35,15 @@ PEBBLE_DIRECTORY = "https://localhost:14000/dir"
 CHALLTESTSRV_URL = "http://localhost:8055"
 
 
+@pytest.fixture(autouse=True)
+def _isolate_env():
+    """Restore os.environ after every test so ACME_LAN_* overrides don't leak."""
+    saved = dict(os.environ)
+    yield
+    os.environ.clear()
+    os.environ.update(saved)
+
+
 def _free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
