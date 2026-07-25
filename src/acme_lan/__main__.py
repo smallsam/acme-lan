@@ -42,6 +42,15 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     settings = get_settings()
+
+    # Auto-migrate the database to the current release before serving, so upgrading the
+    # image transparently upgrades the schema and local data.
+    try:
+        from .migrate import run_migrations
+
+        run_migrations()
+    except Exception:  # noqa: BLE001 - a fresh run still gets tables via init_db()
+        logger.warning("Automatic migration failed; continuing with create_all", exc_info=True)
     host = "0.0.0.0"  # noqa: S104 - a LAN service is meant to listen broadly
     port = 8000
     # If external_url encodes a localhost port, honour it for local runs.

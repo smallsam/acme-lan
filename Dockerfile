@@ -12,11 +12,18 @@ COPY pyproject.toml README.md ./
 COPY src ./src
 RUN pip install --no-cache-dir .
 
-# Persist the database and upstream account key on a volume.
+# Migrations live at the repo root; ship them so the entrypoint can auto-migrate.
+COPY migrations ./migrations
+COPY alembic.ini ./alembic.ini
+
+# Persist the database and secrets on a volume.
 VOLUME ["/app/data"]
 ENV ACME_LAN_DATABASE_URL=sqlite+aiosqlite:////app/data/acme_lan.db \
-    ACME_LAN_UPSTREAM_ACCOUNT_KEY_PATH=/app/data/upstream_account.key
+    ACME_LAN_UPSTREAM_ACCOUNT_KEY_PATH=/app/data/upstream_account.key \
+    ACME_LAN_MIGRATIONS_DIR=/app/migrations
 
 EXPOSE 8000
 
-CMD ["uvicorn", "acme_lan.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# The `acme-lan` entrypoint runs schema + data migrations, then serves (HTTPS if a
+# service cert is configured).
+CMD ["acme-lan"]
