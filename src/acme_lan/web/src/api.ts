@@ -95,7 +95,9 @@ export interface ManagedHost {
   address: string
   port: number
   deploy_plugin: string
+  csr_source: string
   enabled: boolean
   last_deployed_at: string | null
   last_status: string | null
+  warning?: string
 }

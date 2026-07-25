@@ -19,20 +19,30 @@ from .auth import require_admin
 router = APIRouter(prefix="/api", dependencies=[Depends(require_admin)])
 
 
+LOCAL_KEY_WARNING = (
+    "csr_source='local' means acme-lan generates and holds the private key. Prefer "
+    "csr_source='device' so the key never leaves the device."
+)
+
+
 def _host_view(host: ManagedHost) -> dict[str, Any]:
-    return {
+    view = {
         "id": host.id,
         "name": host.name,
         "domains": host.domains,
         "address": host.address,
         "port": host.port,
         "deploy_plugin": host.deploy_plugin,
+        "csr_source": host.csr_source,
         "credential_id": host.credential_id,
         "config": host.config,
         "enabled": host.enabled,
         "last_deployed_at": host.last_deployed_at.isoformat() if host.last_deployed_at else None,
         "last_status": host.last_status,
     }
+    if host.csr_source == "local":
+        view["warning"] = LOCAL_KEY_WARNING
+    return view
 
 
 class HostCreate(BaseModel):
@@ -41,6 +51,7 @@ class HostCreate(BaseModel):
     address: str
     port: int = 443
     deploy_plugin: str = "local"
+    csr_source: str = "device"
     credential_id: str | None = None
     config: dict[str, Any] = {}
     enabled: bool = True
@@ -52,6 +63,7 @@ class HostUpdate(BaseModel):
     address: str | None = None
     port: int | None = None
     deploy_plugin: str | None = None
+    csr_source: str | None = None
     credential_id: str | None = None
     config: dict[str, Any] | None = None
     enabled: bool | None = None
@@ -74,6 +86,17 @@ async def create_host(
 ) -> dict[str, Any]:
     if body.deploy_plugin not in available_plugins():
         raise HTTPException(400, f"Unknown deploy plugin {body.deploy_plugin!r}")
+    if body.csr_source not in ("device", "local"):
+        raise HTTPException(400, "csr_source must be 'device' or 'local'")
+    if body.csr_source == "device":
+        from ..deploy.factory import get_deploy_plugin
+
+        if not get_deploy_plugin(body.deploy_plugin).supports_csr_retrieval:
+            raise HTTPException(
+                400,
+                f"deploy plugin {body.deploy_plugin!r} cannot retrieve a CSR from the device; "
+                "use csr_source='local'",
+            )
     host = ManagedHost(**body.model_dump())
     session.add(host)
     await session.commit()

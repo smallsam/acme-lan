@@ -18,7 +18,7 @@ const token = ref<string>(getToken())
 
 const hosts = ref<ManagedHost[]>([])
 const hostMsg = ref<string>('')
-const newHost = reactive({ name: '', domains: '', address: '', port: 443, deploy_plugin: 'local', config: '' })
+const newHost = reactive({ name: '', domains: '', address: '', port: 443, deploy_plugin: 'local', csr_source: 'device', config: '' })
 
 const probeForm = reactive({ host: '', port: 443, server_name: '' })
 const probeResult = ref<TlsHealth | null>(null)
@@ -46,6 +46,7 @@ async function addHost() {
       address: newHost.address,
       port: Number(newHost.port),
       deploy_plugin: newHost.deploy_plugin,
+      csr_source: newHost.csr_source,
       config: newHost.config ? JSON.parse(newHost.config) : {},
     } as any)
     hosts.value = await api.hosts()
@@ -265,9 +266,18 @@ onMounted(loadAll)
               <input v-model="newHost.address" placeholder="192.168.3.5" class="w-36 rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-800" /></label>
             <label class="text-xs"><span class="mb-1 block text-slate-500 dark:text-slate-400">Plugin</span>
               <input v-model="newHost.deploy_plugin" class="w-24 rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-800" /></label>
+            <label class="text-xs"><span class="mb-1 block text-slate-500 dark:text-slate-400">CSR source</span>
+              <select v-model="newHost.csr_source" class="w-40 rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-800">
+                <option value="device">device (key stays on device)</option>
+                <option value="local">local (acme-lan holds key)</option>
+              </select></label>
             <label class="text-xs"><span class="mb-1 block text-slate-500 dark:text-slate-400">Config (JSON)</span>
               <input v-model="newHost.config" placeholder='{"cert_path":"…","key_path":"…"}' class="w-64 rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-800" /></label>
             <button @click="addHost" class="rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-500">Add host</button>
+          </div>
+          <div v-if="newHost.csr_source === 'local'" class="mt-2 rounded-md bg-amber-100 px-3 py-2 text-xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+            ⚠ With <b>local</b> CSR source, acme-lan generates and stores the private key. Prefer
+            <b>device</b> so the private key never leaves the device.
           </div>
           <div v-if="hostMsg" class="mt-2 text-xs text-slate-500 dark:text-slate-400">{{ hostMsg }}</div>
         </div>

@@ -20,6 +20,40 @@ from .base import DeployContext, DeployPlugin, DeployResult
 
 class LocalDeployPlugin(DeployPlugin):
     name = "local"
+    supports_csr_retrieval = True
+
+    def fetch_csr(self, ctx: DeployContext) -> str:
+        """Read a CSR the local service generated itself (key never leaves the device)."""
+        csr_path = ctx.config.get("csr_path")
+        if not csr_path:
+            raise ValueError("local plugin CSR-from-device mode requires 'csr_path' config")
+        with open(csr_path) as fh:
+            return fh.read()
+
+    def install_cert(self, ctx: DeployContext) -> DeployResult:
+        """Write only the certificate chain (no key) and optionally reload."""
+        cert_path = ctx.config.get("cert_path")
+        if not cert_path:
+            return DeployResult(False, "local plugin requires 'cert_path' config")
+        parent = os.path.dirname(cert_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(cert_path, "w") as fh:
+            fh.write(ctx.fullchain_pem)
+        return self._maybe_reload(ctx) or DeployResult(True, f"wrote {cert_path}")
+
+    def _maybe_reload(self, ctx: DeployContext) -> DeployResult | None:
+        reload_command = ctx.config.get("reload_command")
+        if not reload_command:
+            return None
+        proc = subprocess.run(
+            reload_command, shell=True, capture_output=True, text=True, timeout=120
+        )
+        if proc.returncode != 0:
+            return DeployResult(
+                False, f"reload command failed ({proc.returncode}): {proc.stderr.strip()}"
+            )
+        return None
 
     def deploy(self, ctx: DeployContext) -> DeployResult:
         cert_path = ctx.config.get("cert_path")

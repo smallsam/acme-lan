@@ -50,6 +50,7 @@ async def test_host_issuance_and_deploy_via_pebble(pebble, tmp_path):
             domains=[domain],
             address="127.0.0.1",
             deploy_plugin="local",
+            csr_source="local",
             config={"cert_path": str(cert_path), "key_path": str(key_path)},
         )
         session.add(host)

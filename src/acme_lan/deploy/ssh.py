@@ -1,12 +1,20 @@
-"""SSH deploy plugin: upload the cert + key over SFTP and run a reload command.
+"""SSH deploy plugin: install a cert over SFTP and run a reload command.
 
-Authenticates with the host's stored credential — either a password or an SSH private key.
-paramiko is imported lazily so the rest of the app works even if it isn't installed.
+Supports both modes:
+  - CSR-from-device (preferred): fetch a CSR from the device (via ``csr_command`` or
+    ``remote_csr_path``), then ``install_cert`` uploads only the signed cert. The private
+    key never leaves the device.
+  - local key: ``deploy`` uploads both the cert and the acme-lan-generated key.
+
+Authenticates with the host's stored credential (password or SSH private key). paramiko is
+imported lazily so the rest of the app works even if it isn't installed.
 
 Config keys:
   remote_cert_path  — path on the device for the fullchain PEM (required)
-  remote_key_path   — path on the device for the private key PEM (required)
-  reload_command    — optional command to run after upload (e.g. restart the service)
+  remote_key_path   — path for the private key PEM (required for local-key mode)
+  remote_csr_path   — path to read the device CSR from (CSR-from-device mode)
+  csr_command       — command to run on the device that prints a CSR to stdout (alternative)
+  reload_command    — optional command to run after install
   port              — SSH port (default 22)
 """
 
@@ -19,41 +27,90 @@ from .base import DeployContext, DeployPlugin, DeployResult
 
 class SshDeployPlugin(DeployPlugin):
     name = "ssh"
+    supports_csr_retrieval = True
 
-    def deploy(self, ctx: DeployContext) -> DeployResult:
-        try:
-            import paramiko
-        except ImportError:  # pragma: no cover
-            return DeployResult(False, "paramiko is not installed")
+    # --- connection helpers ---
+    def _connect(self, ctx: DeployContext):
+        import paramiko
 
-        cfg = ctx.config
-        remote_cert = cfg.get("remote_cert_path")
-        remote_key = cfg.get("remote_key_path")
-        if not remote_cert or not remote_key:
-            return DeployResult(
-                False, "ssh plugin requires 'remote_cert_path' and 'remote_key_path'"
-            )
         if ctx.credential is None:
-            return DeployResult(False, "ssh plugin requires a credential")
-
+            raise ValueError("ssh plugin requires a credential")
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        connect_kwargs = {
+        kwargs = {
             "hostname": ctx.host.address,
-            "port": int(cfg.get("port", 22)),
+            "port": int(ctx.config.get("port", 22)),
             "username": ctx.credential.username,
             "timeout": 20,
         }
         if ctx.credential.kind == "ssh_key":
-            connect_kwargs["pkey"] = _load_pkey(paramiko, ctx.credential.secret)
+            kwargs["pkey"] = _load_pkey(paramiko, ctx.credential.secret)
         else:
-            connect_kwargs["password"] = ctx.credential.secret
+            kwargs["password"] = ctx.credential.secret
+        client.connect(**kwargs)
+        return client
 
+    @staticmethod
+    def _paramiko():
         try:
-            client.connect(**connect_kwargs)
+            import paramiko
+
+            return paramiko
+        except ImportError:  # pragma: no cover
+            return None
+
+    # --- mode 1: CSR from device ---
+    def fetch_csr(self, ctx: DeployContext) -> str:
+        if self._paramiko() is None:
+            raise RuntimeError("paramiko is not installed")
+        client = self._connect(ctx)
+        try:
+            csr_command = ctx.config.get("csr_command")
+            if csr_command:
+                _stdin, stdout, stderr = client.exec_command(csr_command, timeout=60)
+                rc = stdout.channel.recv_exit_status()
+                out = stdout.read().decode()
+                if rc != 0:
+                    raise RuntimeError(f"csr_command failed ({rc}): {stderr.read().decode()}")
+                return out
+            remote_csr = ctx.config.get("remote_csr_path")
+            if not remote_csr:
+                raise ValueError(
+                    "ssh CSR-from-device mode needs 'csr_command' or 'remote_csr_path'"
+                )
+            sftp = client.open_sftp()
+            try:
+                return _read(sftp, remote_csr)
+            finally:
+                sftp.close()
+        finally:
+            client.close()
+
+    def install_cert(self, ctx: DeployContext) -> DeployResult:
+        return self._upload(ctx, include_key=False)
+
+    # --- mode 2: local key ---
+    def deploy(self, ctx: DeployContext) -> DeployResult:
+        return self._upload(ctx, include_key=True)
+
+    def _upload(self, ctx: DeployContext, *, include_key: bool) -> DeployResult:
+        if self._paramiko() is None:
+            return DeployResult(False, "paramiko is not installed")
+        cfg = ctx.config
+        remote_cert = cfg.get("remote_cert_path")
+        if not remote_cert:
+            return DeployResult(False, "ssh plugin requires 'remote_cert_path'")
+        if include_key and not cfg.get("remote_key_path"):
+            return DeployResult(False, "ssh plugin requires 'remote_key_path' for local-key mode")
+        try:
+            client = self._connect(ctx)
+        except Exception as exc:  # noqa: BLE001
+            return DeployResult(False, f"ssh connect failed: {exc}")
+        try:
             sftp = client.open_sftp()
             _write_remote(sftp, remote_cert, ctx.fullchain_pem, mode=0o644)
-            _write_remote(sftp, remote_key, ctx.private_key_pem, mode=0o600)
+            if include_key and ctx.private_key_pem:
+                _write_remote(sftp, cfg["remote_key_path"], ctx.private_key_pem, mode=0o600)
             sftp.close()
 
             reload_command = cfg.get("reload_command")
@@ -69,6 +126,12 @@ class SshDeployPlugin(DeployPlugin):
             return DeployResult(False, f"ssh deploy failed: {exc}")
         finally:
             client.close()
+
+
+def _read(sftp, path: str) -> str:
+    with sftp.open(path, "r") as fh:
+        data = fh.read()
+    return data.decode() if isinstance(data, bytes) else data
 
 
 def _load_pkey(paramiko, secret: str):

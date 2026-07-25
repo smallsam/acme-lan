@@ -12,6 +12,11 @@ _PLUGINS: dict[str, type[DeployPlugin]] = {
 }
 
 
+def register_plugin(plugin_cls: type[DeployPlugin]) -> None:
+    """Register a deploy plugin class under its ``name`` (for extensions / tests)."""
+    _PLUGINS[plugin_cls.name] = plugin_cls
+
+
 def available_plugins() -> list[str]:
     return sorted(_PLUGINS)
 

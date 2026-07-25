@@ -140,6 +140,12 @@ class ManagedHost(SQLModel, table=True):
     address: str = ""  # host / IP to deploy to and health-check
     port: int = 443
     deploy_plugin: str = "local"
+    # How the CSR is obtained:
+    #   "device" (preferred) — retrieve a CSR from the device; the private key never touches
+    #                          acme-lan. Only the signed cert is pushed back.
+    #   "local"              — acme-lan generates the key + CSR and pushes both. Less secure;
+    #                          the UI warns when this is chosen.
+    csr_source: str = "device"
     credential_id: str | None = Field(default=None, foreign_key="stored_credential.id")
     config: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     enabled: bool = True

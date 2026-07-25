@@ -19,7 +19,8 @@ from ..models import ManagedHost
 class DeployContext:
     host: ManagedHost
     fullchain_pem: str
-    private_key_pem: str
+    # None in CSR-from-device mode, where the key stays on the device.
+    private_key_pem: str | None
     credential: DecryptedCredential | None
     config: dict[str, Any]
 
@@ -32,7 +33,18 @@ class DeployResult:
 
 class DeployPlugin(abc.ABC):
     name: str = "base"
+    # Whether this plugin can retrieve a CSR from the device (enables the preferred,
+    # key-never-leaves-the-device mode).
+    supports_csr_retrieval: bool = False
 
     @abc.abstractmethod
     def deploy(self, ctx: DeployContext) -> DeployResult:
-        """Install the certificate + key onto the host described by ``ctx``."""
+        """Mode 2: install the certificate *and* private key onto the host."""
+
+    def fetch_csr(self, ctx: DeployContext) -> str:
+        """Mode 1: retrieve a CSR (PEM) generated on the device. Key stays on the device."""
+        raise NotImplementedError(f"{self.name} plugin cannot retrieve a CSR from the device")
+
+    def install_cert(self, ctx: DeployContext) -> DeployResult:
+        """Mode 1: install only the signed certificate (no key) onto the host."""
+        raise NotImplementedError(f"{self.name} plugin cannot install a cert without a key")

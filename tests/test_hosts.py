@@ -39,6 +39,7 @@ async def test_renew_and_deploy_local(fresh_db, tmp_path):
             domains=["printer.lan.test"],
             address="127.0.0.1",
             deploy_plugin="local",
+            csr_source="local",
             config={"cert_path": str(cert_path), "key_path": str(key_path)},
         )
         session.add(host)

@@ -72,23 +72,27 @@ async def renew_and_deploy(
     """Issue a fresh certificate for ``host`` and deploy it, recording the outcome."""
     issuer = issuer or _default_issuer
     credential = await _load_credential(host, session)
+    device_mode = host.csr_source == "device"
 
-    def _work() -> tuple[str, str, DeployResult]:
+    def _work() -> tuple[str, str | None, DeployResult]:
+        plugin = get_deploy_plugin(host.deploy_plugin)
+        config = dict(host.config)
+        if device_mode:
+            # Preferred: the device provides the CSR; its private key never reaches acme-lan.
+            probe_ctx = DeployContext(host, "", None, credential, config)
+            csr_pem = plugin.fetch_csr(probe_ctx)
+            fullchain = issuer(csr_pem)
+            install_ctx = DeployContext(host, fullchain, None, credential, config)
+            return fullchain, None, plugin.install_cert(install_ctx)
+        # Local: acme-lan generates the key + CSR and pushes both.
         csr_pem, key_pem = build_host_csr(list(host.domains))
         fullchain = issuer(csr_pem)
-        plugin = get_deploy_plugin(host.deploy_plugin)
-        ctx = DeployContext(
-            host=host,
-            fullchain_pem=fullchain,
-            private_key_pem=key_pem,
-            credential=credential,
-            config=dict(host.config),
-        )
+        ctx = DeployContext(host, fullchain, key_pem, credential, config)
         return fullchain, key_pem, plugin.deploy(ctx)
 
     fullchain, key_pem, result = await run_in_threadpool(_work)
 
-    # Persist the cert + key in the configured storage backend (local DB / Key Vault / Vault).
+    # Persist the cert (+ key, if we hold one) in the configured storage backend.
     store = get_cert_store()
     key_reference = await store.store(host.name or list(host.domains)[0], fullchain, key_pem)
 

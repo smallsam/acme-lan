@@ -37,6 +37,7 @@ async def test_renew_due_hosts_renews_only_due(fresh_db, tmp_path):
             domains=["due.lan.test"],
             address="127.0.0.1",
             deploy_plugin="local",
+            csr_source="local",
             config={
                 "cert_path": str(tmp_path / "due-cert.pem"),
                 "key_path": str(tmp_path / "due-key.pem"),
