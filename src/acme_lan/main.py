@@ -18,6 +18,7 @@ from .management import acme_profiles_api, hosts_api
 from .management import api as management_api
 from .notifications import get_channels, run_notifier
 from .scheduler import run_scheduler
+from .selfcert import run_self_cert_maintainer
 
 FRONTEND_DIST = Path(__file__).resolve().parent / "web" / "dist"
 
@@ -32,6 +33,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         tasks.append(asyncio.create_task(run_scheduler(stop_event)))
     if get_channels(settings):
         tasks.append(asyncio.create_task(run_notifier(stop_event)))
+    if settings.self_cert_enabled and settings.service_domain:
+        tasks.append(asyncio.create_task(run_self_cert_maintainer(stop_event)))
     try:
         yield
     finally:

@@ -109,6 +109,16 @@ class Settings(BaseSettings):
     )
     renew_check_interval_seconds: int = Field(default=3600)
 
+    # --- Self TLS certificate (serve the admin UI / ACME endpoints over trusted HTTPS) ---
+    # The hostname acme-lan is reached on; when set (and self_cert_enabled), acme-lan
+    # obtains and renews its own certificate via the default upstream so there are no TLS
+    # warnings on the LAN.
+    service_domain: str = Field(default="")
+    self_cert_enabled: bool = Field(default=False)
+    self_cert_path: str = Field(default="./data/service_cert.pem")
+    self_cert_key_path: str = Field(default="./data/service_key.pem")
+    self_cert_refresh_interval_seconds: int = Field(default=43200)  # 12h
+
     # --- Maintenance / GC ---
     nonce_max_age_seconds: int = Field(
         default=3600, description="Unused nonces older than this are purged."

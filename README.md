@@ -69,6 +69,28 @@ Phases 1 and 2 are implemented; see [`docs/ROADMAP.md`](docs/ROADMAP.md) for the
 - Background **auto-renew scheduler** (`ACME_LAN_AUTO_RENEW_ENABLED`) and nonce/order GC.
 - `Dockerfile` (serves the pre-built dashboard) and structured logging.
 
+**Certificate lifecycle & delivery:**
+
+- Every issued cert is tracked (renewals are new rows); the dashboard shows days-to-expiry
+  and warns; **retire** a cert (`POST /api/certificates/{id}/retire`) so it stops warning.
+- **Expiry notifications** over pluggable channels: **Postmark** email + generic webhook.
+- Pluggable **key/cert storage**: local (encrypted in DB), **Azure Key Vault**, **Vault**.
+
+**Device push — two modes:**
+
+- `csr_source="device"` (preferred): sign a CSR fetched from the device; the private key
+  never touches acme-lan. `csr_source="local"`: acme-lan generates the key (UI warns).
+
+**Multiple ACME listeners:**
+
+- Named profiles under `/acme/p/<name>/` each proxy to a different upstream — an
+  EAB-authenticated ACME CA (e.g. DigiCert) or a **private CA** via an acme2certifier-style
+  `ca_handler` (ships a `local_ca` that signs CSRs, for WiFi/private-CA certs).
+
+**Self TLS:** with `ACME_LAN_SERVICE_DOMAIN` + `SELF_CERT_ENABLED`, acme-lan obtains and
+renews its **own** certificate and serves the admin UI / ACME endpoints over trusted HTTPS
+— eliminating cert warnings across the LAN.
+
 ## Quickstart
 
 ```bash
