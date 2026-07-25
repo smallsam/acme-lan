@@ -145,6 +145,27 @@ go install github.com/letsencrypt/pebble/v2/cmd/pebble-challtestsrv@latest
 A Docker Compose alternative for the same two services is provided in
 [`docker-compose.test.yml`](docker-compose.test.yml).
 
+## Deployment & development
+
+- **Docker:** the `Dockerfile` builds a self-contained image (the dashboard is pre-built).
+  Tagging a release `vX.Y.Z` triggers [`.github/workflows/release.yml`](.github/workflows/release.yml)
+  to build a multi-arch image and push it to Docker Hub (set `DOCKERHUB_USERNAME` /
+  `DOCKERHUB_TOKEN` secrets). The container entrypoint **auto-migrates** the database
+  (Alembic schema + idempotent data migrations) before serving, so upgrading the image
+  upgrades an existing volume in place.
+- **Dev container:** open in a [devcontainer](.devcontainer/devcontainer.json) (Python +
+  Node + Go + Docker); the post-create installs all deps and builds the Pebble test
+  binaries so `uv run pytest -q` works immediately.
+- **CI:** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs ruff + the full test
+  suite (including the Pebble-backed e2e tests) on every push/PR.
+
+## Security (key handling)
+
+No private key material is stored in the database or on disk in the clear (the one opt-in
+exception is device-push local key generation). See [`docs/SECURITY.md`](docs/SECURITY.md).
+Device-push credentials and issued cert/key bundles can live in **Azure Key Vault** or
+**HashiCorp Vault** instead of the local (encrypted) database.
+
 ## Configuration
 
 All settings use the `ACME_LAN_` env prefix; see [`.env.example`](.env.example).
