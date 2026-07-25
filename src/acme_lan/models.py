@@ -127,7 +127,12 @@ class StoredCredential(SQLModel, table=True):
     name: str = ""
     kind: str = "password"  # "password" | "ssh_key"
     username: str = ""
-    secret_encrypted: str = ""  # Fernet ciphertext of the password or private key
+    # Where the secret lives: "local" (Fernet ciphertext in secret_encrypted), or a remote
+    # provider ("azure_keyvault" | "vault") fetched by secret_reference at deploy time. The
+    # same providers used for remote certificate storage are mirrored here.
+    provider: str = "local"
+    secret_encrypted: str = ""  # Fernet ciphertext (local provider only)
+    secret_reference: str = ""  # remote provider handle (azure secret name / vault path)
     created_at: datetime = Field(default_factory=utcnow)
 
 

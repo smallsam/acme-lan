@@ -55,9 +55,16 @@ async def _load_credential(
     row = await session.get(StoredCredential, host.credential_id)
     if row is None:
         return None
-    return DecryptedCredential(
-        kind=row.kind, username=row.username, secret=decrypt_secret(row.secret_encrypted)
-    )
+    if row.provider == "local":
+        secret = decrypt_secret(row.secret_encrypted)
+    else:
+        # Fetch from an external secret manager (Key Vault / Vault) at deploy time; the
+        # secret is never persisted in acme-lan's database.
+        from .secrets.factory import get_secret_provider
+
+        provider = get_secret_provider(row.provider)
+        secret = await run_in_threadpool(provider.get_secret, row.secret_reference)
+    return DecryptedCredential(kind=row.kind, username=row.username, secret=secret)
 
 
 def _default_issuer(csr_pem: str) -> str:

@@ -151,7 +151,11 @@ class CredentialCreate(BaseModel):
     name: str
     kind: str = "password"  # "password" | "ssh_key"
     username: str
-    secret: str
+    # local: provide `secret` (stored Fernet-encrypted). Remote (azure_keyvault | vault):
+    # provide `secret_reference` (the secret is fetched from the provider at deploy time).
+    provider: str = "local"
+    secret: str = ""
+    secret_reference: str = ""
 
 
 def _credential_view(cred: StoredCredential) -> dict[str, Any]:
@@ -160,6 +164,8 @@ def _credential_view(cred: StoredCredential) -> dict[str, Any]:
         "name": cred.name,
         "kind": cred.kind,
         "username": cred.username,
+        "provider": cred.provider,
+        "secret_reference": cred.secret_reference if cred.provider != "local" else None,
         "created_at": cred.created_at.isoformat() if cred.created_at else None,
     }
 
@@ -176,12 +182,30 @@ async def create_credential(
 ) -> dict[str, Any]:
     if body.kind not in ("password", "ssh_key"):
         raise HTTPException(400, "kind must be 'password' or 'ssh_key'")
-    cred = StoredCredential(
-        name=body.name,
-        kind=body.kind,
-        username=body.username,
-        secret_encrypted=encrypt_secret(body.secret),
-    )
+    if body.provider == "local":
+        if not body.secret:
+            raise HTTPException(400, "local credentials require 'secret'")
+        cred = StoredCredential(
+            name=body.name,
+            kind=body.kind,
+            username=body.username,
+            provider="local",
+            secret_encrypted=encrypt_secret(body.secret),
+        )
+    else:
+        from ..secrets.factory import SUPPORTED
+
+        if body.provider not in SUPPORTED:
+            raise HTTPException(400, f"provider must be 'local' or one of {SUPPORTED}")
+        if not body.secret_reference:
+            raise HTTPException(400, f"{body.provider} credentials require 'secret_reference'")
+        cred = StoredCredential(
+            name=body.name,
+            kind=body.kind,
+            username=body.username,
+            provider=body.provider,
+            secret_reference=body.secret_reference,
+        )
     session.add(cred)
     await session.commit()
     await session.refresh(cred)
