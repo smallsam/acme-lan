@@ -145,6 +145,13 @@ go install github.com/letsencrypt/pebble/v2/cmd/pebble-challtestsrv@latest
 A Docker Compose alternative for the same two services is provided in
 [`docker-compose.test.yml`](docker-compose.test.yml).
 
+## Documentation
+
+- [Deployment guide](docs/DEPLOYMENT.md) — install, configure, and go live.
+- [Operations & maintenance](docs/MAINTENANCE.md) — upgrades, backups, renewals, troubleshooting.
+- [Security / key handling](docs/SECURITY.md) — where private keys live (and don't).
+- [Roadmap](docs/ROADMAP.md) — what's built and what's planned.
+
 ## Deployment & development
 
 - **Docker:** the `Dockerfile` builds a self-contained image (the dashboard is pre-built).
