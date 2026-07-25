@@ -20,7 +20,7 @@ def _bootstrap_service_cert() -> tuple[str, str] | None:
         return None
 
     from .db import init_db
-    from .selfcert import ensure_service_certificate
+    from .selfcert import ensure_service_certificate, materialize_service_key
 
     async def _run() -> None:
         await init_db()
@@ -31,9 +31,13 @@ def _bootstrap_service_cert() -> tuple[str, str] | None:
     except Exception:  # noqa: BLE001 - fall back to HTTP if issuance fails
         logger.warning("Could not obtain service certificate at startup", exc_info=True)
 
-    if os.path.exists(settings.self_cert_path) and os.path.exists(settings.self_cert_key_path):
-        return settings.self_cert_path, settings.self_cert_key_path
-    return None
+    if not os.path.exists(settings.self_cert_path):
+        return None
+    # Decrypt the key into an in-memory fd (never a plaintext file on disk).
+    key_path = materialize_service_key(settings.service_domain)
+    if not key_path:
+        return None
+    return settings.self_cert_path, key_path
 
 
 def main() -> None:

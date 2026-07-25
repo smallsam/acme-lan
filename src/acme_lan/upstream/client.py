@@ -7,26 +7,11 @@ single stable upstream account across restarts.
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 import josepy
 from acme import client, messages
-from cryptography.hazmat.primitives.asymmetric import rsa
 
 from ..config import Settings
-
-
-def load_or_create_account_key(path_str: str) -> josepy.JWKRSA:
-    """Load a persisted RSA account key, generating and saving one on first use."""
-    path = Path(path_str)
-    if path.exists():
-        return josepy.JWKRSA.json_loads(path.read_text())
-    rsa_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    account_key = josepy.JWKRSA(key=josepy.ComparableRSAKey(rsa_key))
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(account_key.to_json()))
-    return account_key
+from ..keystore import load_or_create_account_key
 
 
 def build_client(
@@ -47,10 +32,12 @@ def build_client(
     """
     directory_url = directory_url or settings.upstream_directory_url
     verify_ssl = settings.upstream_verify_ssl if verify_ssl is None else verify_ssl
-    account_key_path = account_key_path or settings.upstream_account_key_path
+    # The path setting is now used only as a stable storage name; the key is kept encrypted
+    # (or in memory), never written to disk in the clear.
+    account_key_name = account_key_path or settings.upstream_account_key_path or "default"
     account_email = account_email if account_email is not None else settings.upstream_account_email
 
-    account_key = load_or_create_account_key(account_key_path)
+    account_key = load_or_create_account_key(account_key_name)
     net = client.ClientNetwork(account_key, user_agent="acme-lan/0.1", verify_ssl=verify_ssl)
     directory = client.ClientV2.get_directory(directory_url, net)
     acme_client = client.ClientV2(directory, net=net)

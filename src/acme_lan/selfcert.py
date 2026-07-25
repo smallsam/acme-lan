@@ -1,9 +1,9 @@
-"""acme-lan obtains and renews its *own* TLS certificate.
+"""acme-lan obtains and renews its own TLS certificate — without a plaintext key at rest.
 
-Once a service domain and an upstream are configured, acme-lan issues a certificate for
-its own hostname (via the default upstream proxy) and writes it to disk so uvicorn can
-serve the admin UI and ACME endpoints over trusted HTTPS — eliminating certificate
-warnings for the whole LAN. The cert is tracked like any other and auto-renewed.
+The certificate (public) is written to ``self_cert_path`` for serving; the private key is
+stored **encrypted** via the keystore and only materialized into an in-memory file
+descriptor (memfd on Linux) when uvicorn needs it — it is never written to disk in the
+clear. Requires ``ACME_LAN_SECRET_KEY``.
 """
 
 from __future__ import annotations
@@ -11,17 +11,23 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import tempfile
 from datetime import UTC, datetime
 
 from cryptography import x509
 from fastapi.concurrency import run_in_threadpool
 
+from . import keystore
 from .config import get_settings
 from .db import session_scope
 from .hosts import Issuer, build_host_csr
 from .models import Certificate, utcnow
 
 logger = logging.getLogger("acme_lan.selfcert")
+
+
+def _key_name(domain: str) -> str:
+    return f"selfcert:{domain}"
 
 
 def _needs_issue(cert_path: str, renew_before_days: int) -> bool:
@@ -32,8 +38,7 @@ def _needs_issue(cert_path: str, renew_before_days: int) -> bool:
             leaf = x509.load_pem_x509_certificates(fh.read())[0]
     except Exception:  # noqa: BLE001 - unreadable/garbage -> reissue
         return True
-    not_after = leaf.not_valid_after_utc
-    return (not_after - datetime.now(UTC)).days <= renew_before_days
+    return (leaf.not_valid_after_utc - datetime.now(UTC)).days <= renew_before_days
 
 
 def _default_issuer(csr_pem: str) -> str:
@@ -43,9 +48,15 @@ def _default_issuer(csr_pem: str) -> str:
 
 
 async def ensure_service_certificate(*, issuer: Issuer | None = None, force: bool = False) -> bool:
-    """Ensure a current service certificate exists on disk. Returns True if (re)issued."""
+    """Ensure a current service certificate exists. Returns True if (re)issued."""
     settings = get_settings()
     if not settings.service_domain:
+        return False
+    if not settings.secret_key:
+        logger.error(
+            "Self-service TLS requires ACME_LAN_SECRET_KEY (to store the key encrypted); "
+            "skipping so no plaintext key is written to disk."
+        )
         return False
     if not force and not _needs_issue(settings.self_cert_path, settings.renew_before_days):
         return False
@@ -55,20 +66,18 @@ async def ensure_service_certificate(*, issuer: Issuer | None = None, force: boo
 
     def _issue() -> tuple[str, str]:
         csr_pem, key_pem = build_host_csr([domain])
-        return issuer(csr_pem), key_pem
+        fullchain = issuer(csr_pem)
+        # Persist the key encrypted; write only the public cert to disk.
+        keystore.put_material(_key_name(domain), key_pem)
+        return fullchain, key_pem
 
-    fullchain, key_pem = await run_in_threadpool(_issue)
+    fullchain, _key_pem = await run_in_threadpool(_issue)
 
-    for path, content, mode in (
-        (settings.self_cert_path, fullchain, 0o644),
-        (settings.self_cert_key_path, key_pem, 0o600),
-    ):
-        parent = os.path.dirname(path)
-        if parent:
-            os.makedirs(parent, exist_ok=True)
-        with open(path, "w") as fh:
-            fh.write(content)
-        os.chmod(path, mode)
+    parent = os.path.dirname(settings.self_cert_path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    with open(settings.self_cert_path, "w") as fh:
+        fh.write(fullchain)
 
     leaf = x509.load_pem_x509_certificates(fullchain.encode())[0]
     async with session_scope() as session:
@@ -79,14 +88,38 @@ async def ensure_service_certificate(*, issuer: Issuer | None = None, force: boo
                 subject=leaf.subject.rfc4514_string(),
                 serial=format(leaf.serial_number, "x"),
                 not_after=leaf.not_valid_after_utc,
-                key_storage="local_file",
-                key_reference=settings.self_cert_key_path,
+                key_storage="encrypted",
+                key_reference=_key_name(domain),
                 issued_at=utcnow(),
             )
         )
         await session.commit()
-    logger.info("Service certificate for %s issued to %s", domain, settings.self_cert_path)
+    logger.info("Service certificate for %s issued (key stored encrypted)", domain)
     return True
+
+
+def materialize_service_key(domain: str) -> str | None:
+    """Decrypt the service key into an in-memory fd and return a path uvicorn can load.
+
+    Uses ``memfd_create`` so the plaintext key never touches disk; falls back to a 0600
+    temporary file on platforms without memfd.
+    """
+    key_pem = keystore.get_material(_key_name(domain))
+    if not key_pem:
+        return None
+    data = key_pem.encode()
+    try:
+        fd = os.memfd_create(f"acme-lan-{domain}")  # Linux only; fd stays open for the process
+        os.write(fd, data)
+        os.lseek(fd, 0, 0)
+        return f"/proc/self/fd/{fd}"
+    except (AttributeError, OSError):
+        fd, path = tempfile.mkstemp(prefix="acme-lan-selfkey-", suffix=".pem")
+        os.chmod(path, 0o600)
+        os.write(fd, data)
+        os.close(fd)
+        logger.warning("memfd unavailable; wrote the service key to a 0600 temp file %s", path)
+        return path
 
 
 async def run_self_cert_maintainer(stop_event: asyncio.Event) -> None:

@@ -35,7 +35,6 @@ def _chain(domain: str, days: int = 90) -> str:
 async def test_ensure_service_certificate(fresh_db, tmp_path):
     os.environ["ACME_LAN_SERVICE_DOMAIN"] = "acme-lan.lan.test"
     os.environ["ACME_LAN_SELF_CERT_PATH"] = str(tmp_path / "svc.pem")
-    os.environ["ACME_LAN_SELF_CERT_KEY_PATH"] = str(tmp_path / "svc.key")
     from acme_lan import config
 
     config.reset_settings_cache()
@@ -43,9 +42,19 @@ async def test_ensure_service_certificate(fresh_db, tmp_path):
     issuer = lambda csr: _chain("acme-lan.lan.test")  # noqa: E731
 
     assert await ensure_service_certificate(issuer=issuer) is True
+    # Only the public cert is written to disk; the key is NOT.
     assert (tmp_path / "svc.pem").exists()
-    assert (tmp_path / "svc.key").exists()
-    assert (tmp_path / "svc.key").stat().st_mode & 0o777 == 0o600
+    assert not (tmp_path / "svc.key").exists()
+
+    # The private key is retrievable but stored encrypted (via the keystore).
+    from acme_lan import keystore
+    from acme_lan.selfcert import materialize_service_key
+
+    assert keystore.get_material("selfcert:acme-lan.lan.test") is not None
+    key_path = materialize_service_key("acme-lan.lan.test")
+    assert key_path
+    with open(key_path) as fh:
+        assert "PRIVATE KEY" in fh.read()
 
     # Certificate still valid -> no reissue; force -> reissue.
     assert await ensure_service_certificate(issuer=issuer) is False
@@ -62,3 +71,15 @@ async def test_no_service_domain_is_noop(fresh_db, tmp_path):
 
     config.reset_settings_cache()
     assert await ensure_service_certificate(issuer=lambda csr: _chain("x")) is False
+
+
+async def test_self_cert_requires_secret_key(fresh_db, tmp_path):
+    # Without a secret key we must refuse rather than write a plaintext key to disk.
+    os.environ["ACME_LAN_SERVICE_DOMAIN"] = "x.lan.test"
+    os.environ["ACME_LAN_SELF_CERT_PATH"] = str(tmp_path / "c.pem")
+    os.environ.pop("ACME_LAN_SECRET_KEY", None)
+    from acme_lan import config
+
+    config.reset_settings_cache()
+    assert await ensure_service_certificate(issuer=lambda csr: _chain("x.lan.test")) is False
+    assert not (tmp_path / "c.pem").exists()
