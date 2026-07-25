@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Go (for Pebble e2e)
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Build Pebble + challtestsrv
+        run: |
+          go install github.com/letsencrypt/pebble/v2/cmd/pebble@latest
+          go install github.com/letsencrypt/pebble/v2/cmd/pebble-challtestsrv@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Install dependencies
+        run: uv sync --extra dev --extra storage
+
+      - name: Lint
+        run: uv run ruff check src tests
+
+      - name: Test
+        run: uv run pytest -q
