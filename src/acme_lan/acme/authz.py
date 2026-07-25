@@ -10,7 +10,7 @@ from ..db import get_session
 from ..models import Authorization, AuthzStatus, Challenge, ChallengeStatus, Order, utcnow
 from ..validators.http01 import validate_http01
 from .common import acme_json_response, read_verified
-from .encoding import Urls
+from .encoding import Urls, profile_from_request
 from .errors import malformed, unauthorized
 from .serializers import authz_to_json, challenge_to_json
 
@@ -27,7 +27,7 @@ async def _load_owned_authz(authz_id: str, account_id: str, session: AsyncSessio
     return authz, order
 
 
-@router.post("/acme/authz/{authz_id}")
+@router.post("/authz/{authz_id}")
 async def authorization_detail(
     authz_id: str, request: Request, session: AsyncSession = Depends(get_session)
 ) -> Response:
@@ -35,11 +35,11 @@ async def authorization_detail(
     if verified.account is None:
         raise unauthorized("Request must be signed with an account key identifier (kid)")
     authz, _ = await _load_owned_authz(authz_id, verified.account.id, session)
-    urls = Urls()
+    urls = Urls(profile=profile_from_request(request))
     return await acme_json_response(await authz_to_json(authz, session, urls))
 
 
-@router.post("/acme/chall/{challenge_id}")
+@router.post("/chall/{challenge_id}")
 async def respond_challenge(
     challenge_id: str, request: Request, session: AsyncSession = Depends(get_session)
 ) -> Response:
@@ -52,7 +52,7 @@ async def respond_challenge(
         raise unauthorized("Unknown challenge")
     authz, _ = await _load_owned_authz(challenge.authz_id, verified.account.id, session)
 
-    urls = Urls()
+    urls = Urls(profile=profile_from_request(request))
     # Already resolved — just return current state (clients may re-POST while polling).
     if challenge.status in (ChallengeStatus.VALID, ChallengeStatus.INVALID):
         return await acme_json_response(

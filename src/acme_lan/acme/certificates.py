@@ -20,7 +20,7 @@ router = APIRouter()
 PEM_CHAIN_MEDIA_TYPE = "application/pem-certificate-chain"
 
 
-@router.post("/acme/cert/{certificate_id}")
+@router.post("/cert/{certificate_id}")
 async def download_certificate(
     certificate_id: str, request: Request, session: AsyncSession = Depends(get_session)
 ) -> Response:
@@ -38,7 +38,7 @@ async def download_certificate(
     return await acme_raw_response(cert.pem_chain, media_type=PEM_CHAIN_MEDIA_TYPE)
 
 
-@router.post("/acme/revoke-cert")
+@router.post("/revoke-cert")
 async def revoke_certificate(
     request: Request, session: AsyncSession = Depends(get_session)
 ) -> Response:

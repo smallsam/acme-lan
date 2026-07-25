@@ -10,14 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..db import get_session
 from ..models import Account
 from .common import acme_json_response, read_verified
-from .encoding import Urls, b64url_encode
+from .encoding import Urls, b64url_encode, profile_from_request
 from .errors import account_does_not_exist, malformed
 from .serializers import account_to_json
 
 router = APIRouter()
 
 
-@router.post("/acme/new-account")
+@router.post("/new-account")
 async def new_account(request: Request, session: AsyncSession = Depends(get_session)) -> Response:
     verified = await read_verified(request, session)
     if verified.account_id is not None:
@@ -26,7 +26,7 @@ async def new_account(request: Request, session: AsyncSession = Depends(get_sess
 
     payload = verified.payload or {}
     thumbprint = b64url_encode(verified.jwk.thumbprint())
-    urls = Urls()
+    urls = Urls(profile=profile_from_request(request))
 
     existing = (
         await session.execute(select(Account).where(Account.key_thumbprint == thumbprint))
@@ -63,7 +63,7 @@ async def new_account(request: Request, session: AsyncSession = Depends(get_sess
     )
 
 
-@router.post("/acme/acct/{account_id}")
+@router.post("/acct/{account_id}")
 async def account_detail(
     account_id: str, request: Request, session: AsyncSession = Depends(get_session)
 ) -> Response:
@@ -72,7 +72,7 @@ async def account_detail(
     if account is None:
         raise account_does_not_exist()
 
-    urls = Urls()
+    urls = Urls(profile=profile_from_request(request))
     # POST-as-GET returns the account; a payload may update contact info.
     if not verified.is_post_as_get:
         payload = verified.payload or {}

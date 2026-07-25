@@ -166,6 +166,29 @@ class KeyMaterial(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow)
 
 
+class AcmeProfile(SQLModel, table=True):
+    """A named ACME listener served under /acme/p/<name>/ with its own upstream CA."""
+
+    __tablename__ = "acme_profile"
+
+    name: str = Field(primary_key=True)
+    enabled: bool = True
+    # "acme" — proxy to an (optionally EAB-authenticated) upstream ACME CA (e.g. DigiCert).
+    # "ca_handler" — issue from a private CA that doesn't speak ACME (acme2certifier-style).
+    upstream_type: str = "acme"
+    # ACME upstream settings (used when upstream_type == "acme").
+    directory_url: str = ""
+    verify_ssl: bool = True
+    account_email: str = ""
+    account_key_path: str = ""
+    eab_kid: str = ""
+    eab_hmac_key: str = ""
+    # Private-CA handler settings (used when upstream_type == "ca_handler").
+    ca_handler: str = ""
+    ca_handler_config: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=utcnow)
+
+
 class Nonce(SQLModel, table=True):
     __tablename__ = "nonce"
 

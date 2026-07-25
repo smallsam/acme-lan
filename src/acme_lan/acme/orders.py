@@ -25,7 +25,7 @@ from ..models import (
     utcnow,
 )
 from .common import acme_json_response, read_verified
-from .encoding import Urls, b64url_decode
+from .encoding import Urls, b64url_decode, profile_from_request
 from .errors import AcmeError, malformed, order_not_ready, server_internal, unauthorized
 from .serializers import order_to_json
 
@@ -61,7 +61,7 @@ async def recompute_order_status(order: Order, session: AsyncSession) -> None:
     session.add(order)
 
 
-@router.post("/acme/new-order")
+@router.post("/new-order")
 async def new_order(request: Request, session: AsyncSession = Depends(get_session)) -> Response:
     verified = await read_verified(request, session)
     account = await _authorize_account(verified, session)
@@ -112,7 +112,7 @@ async def new_order(request: Request, session: AsyncSession = Depends(get_sessio
     await session.commit()
     await session.refresh(order)
 
-    urls = Urls()
+    urls = Urls(profile=profile_from_request(request))
     return await acme_json_response(
         await order_to_json(order, session, urls),
         status=201,
@@ -120,7 +120,7 @@ async def new_order(request: Request, session: AsyncSession = Depends(get_sessio
     )
 
 
-@router.post("/acme/order/{order_id}")
+@router.post("/order/{order_id}")
 async def order_detail(
     order_id: str, request: Request, session: AsyncSession = Depends(get_session)
 ) -> Response:
@@ -134,7 +134,7 @@ async def order_detail(
     await session.commit()
     await session.refresh(order)
 
-    urls = Urls()
+    urls = Urls(profile=profile_from_request(request))
     return await acme_json_response(
         await order_to_json(order, session, urls), location=urls.order(order.id)
     )
@@ -148,7 +148,7 @@ def _csr_dns_names(csr: x509.CertificateSigningRequest) -> set[str]:
         return set()
 
 
-@router.post("/acme/order/{order_id}/finalize")
+@router.post("/order/{order_id}/finalize")
 async def finalize_order(
     order_id: str, request: Request, session: AsyncSession = Depends(get_session)
 ) -> Response:
@@ -183,15 +183,21 @@ async def finalize_order(
 
     csr_pem = csr.public_bytes(Encoding.PEM).decode("ascii")
 
+    # Select the upstream CA for this listener profile (default, an authenticated ACME
+    # upstream, or a private CA via a ca_handler).
+    from .profiles import resolve_profile_upstream
+
+    upstream = await resolve_profile_upstream(profile_from_request(request), session)
+
     order.status = OrderStatus.PROCESSING
     session.add(order)
     await session.commit()
 
-    # Proxy step: obtain a real certificate from the upstream CA via DNS-01.
+    # Proxy step: obtain a certificate from the profile's upstream.
     from ..upstream.fulfil import fulfil_order
 
     try:
-        fullchain_pem = await run_in_threadpool(fulfil_order, csr_pem)
+        fullchain_pem = await run_in_threadpool(fulfil_order, csr_pem, upstream)
     except Exception as exc:  # noqa: BLE001
         order.status = OrderStatus.INVALID
         order.error = {
@@ -218,7 +224,7 @@ async def finalize_order(
     await session.commit()
     await session.refresh(order)
 
-    urls = Urls()
+    urls = Urls(profile=profile_from_request(request))
     return await acme_json_response(
         await order_to_json(order, session, urls), location=urls.order(order.id)
     )

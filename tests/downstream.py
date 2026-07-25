@@ -9,13 +9,20 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from acme_lan.config import get_settings
 
 
-def build_downstream_client(base_url: str) -> tuple[client.ClientV2, josepy.JWKRSA]:
-    """Register an account against the acme-lan server and return (client, account_key)."""
+def build_downstream_client(
+    base_url: str, directory_url: str | None = None
+) -> tuple[client.ClientV2, josepy.JWKRSA]:
+    """Register an account against the acme-lan server and return (client, account_key).
+
+    ``directory_url`` targets a specific listener profile; defaults to the default listener.
+    """
     account_key = josepy.JWKRSA(key=josepy.ComparableRSAKey(
         rsa.generate_private_key(public_exponent=65537, key_size=2048)
     ))
     net = client.ClientNetwork(account_key, user_agent="acme-lan-tests")
-    directory = client.ClientV2.get_directory(f"{base_url}/acme/directory", net)
+    directory = client.ClientV2.get_directory(
+        directory_url or f"{base_url}/acme/directory", net
+    )
     acme_client = client.ClientV2(directory, net=net)
     regr = acme_client.new_account(
         messages.NewRegistration.from_data(

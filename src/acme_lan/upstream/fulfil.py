@@ -32,19 +32,40 @@ def _select_challenge(
     )
 
 
-def fulfil_order(csr_pem: str) -> str:
-    """Obtain a certificate chain from the upstream CA for the given CSR (PEM string).
+def fulfil_order(csr_pem: str, upstream=None) -> str:
+    """Obtain a certificate chain for the given CSR from the profile's upstream.
 
-    Dispatches to the configured upstream challenge mode (dns-01 or edge http-01).
+    ``upstream`` is a :class:`acme_lan.acme.profiles.ProfileUpstream`; when omitted the
+    default profile (global settings, ACME upstream) is used. Dispatches to a private-CA
+    handler (upstream_type=ca_handler) or the ACME upstream (dns-01 / edge http-01).
     """
     settings = get_settings()
+    if upstream is not None and upstream.upstream_type == "ca_handler":
+        from ..ca.factory import get_ca_handler
+
+        handler = get_ca_handler(upstream.ca_handler, upstream.ca_handler_config)
+        return handler.enroll(csr_pem)
+
     if settings.upstream_challenge == "http-01":
-        return _fulfil_http01(csr_pem, settings)
-    return _fulfil_dns01(csr_pem, settings)
+        return _fulfil_http01(csr_pem, settings, upstream)
+    return _fulfil_dns01(csr_pem, settings, upstream)
 
 
-def _fulfil_dns01(csr_pem: str, settings) -> str:
-    acme_client, account_key = build_client(settings)
+def _client_kwargs(upstream) -> dict:
+    if upstream is None:
+        return {}
+    return {
+        "directory_url": upstream.directory_url,
+        "verify_ssl": upstream.verify_ssl,
+        "account_key_path": upstream.account_key_path,
+        "account_email": upstream.account_email,
+        "eab_kid": upstream.eab_kid,
+        "eab_hmac_key": upstream.eab_hmac_key,
+    }
+
+
+def _fulfil_dns01(csr_pem: str, settings, upstream=None) -> str:
+    acme_client, account_key = build_client(settings, **_client_kwargs(upstream))
     provider = get_dns_provider(settings)
 
     orderr = acme_client.new_order(csr_pem.encode("ascii"))
@@ -80,11 +101,11 @@ def _fulfil_dns01(csr_pem: str, settings) -> str:
                 logger.warning("Failed to clean up TXT %s", record_name, exc_info=True)
 
 
-def _fulfil_http01(csr_pem: str, settings) -> str:
+def _fulfil_http01(csr_pem: str, settings, upstream=None) -> str:
     """Fulfil the upstream order via edge http-01: answer from a local edge HTTP server."""
     from .edge import EdgeHttpResponder
 
-    acme_client, account_key = build_client(settings)
+    acme_client, account_key = build_client(settings, **_client_kwargs(upstream))
     provider = get_dns_provider(settings)
     orderr = acme_client.new_order(csr_pem.encode("ascii"))
 

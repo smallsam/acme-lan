@@ -14,8 +14,8 @@ from .acme import accounts, authz, certificates, directory, orders
 from .acme.errors import AcmeError, acme_error_handler
 from .config import get_settings
 from .db import init_db
+from .management import acme_profiles_api, hosts_api
 from .management import api as management_api
-from .management import hosts_api
 from .notifications import get_channels, run_notifier
 from .scheduler import run_scheduler
 
@@ -49,10 +49,15 @@ def create_app() -> FastAPI:
     )
     app.add_exception_handler(AcmeError, acme_error_handler)
 
-    for module in (directory, accounts, orders, authz, certificates):
-        app.include_router(module.router)
+    # Mount the ACME endpoints for the default listener (/acme/...) and for named
+    # profiles (/acme/p/{profile}/...), each of which can proxy to a different upstream CA.
+    acme_modules = (directory, accounts, orders, authz, certificates)
+    for prefix in ("/acme", "/acme/p/{profile}"):
+        for module in acme_modules:
+            app.include_router(module.router, prefix=prefix)
     app.include_router(management_api.router)
     app.include_router(hosts_api.router)
+    app.include_router(acme_profiles_api.router)
 
     @app.get("/healthz", include_in_schema=False)
     async def healthz() -> dict[str, str]:
