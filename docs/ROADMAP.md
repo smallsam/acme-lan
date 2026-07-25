@@ -62,3 +62,24 @@ selection + one-shot renew/deploy are implemented and API-triggerable today).
 Still open (future work): TLS-ALPN-01 upstream, RFC 2136 (nsupdate/TSIG) provider,
 downstream `dns-01` / `tls-alpn-01` validation for wildcards, Prometheus metrics, and
 DB/credential backup-restore tooling.
+
+## Phase 5 — Requested extensions  ✅
+
+- **Certificate lifecycle**: all issued certs tracked (renewals as new rows); dashboard
+  expiry warnings; retire ("no longer required") to silence warnings.
+- **Expiry notifications**: pluggable channels — Postmark email + generic webhook — with a
+  background notifier and once-per-cert dedup.
+- **Pluggable key/cert storage**: `local` (Fernet-encrypted in DB), Azure Key Vault, and
+  HashiCorp Vault (`ACME_LAN_CERT_STORE_BACKEND`).
+- **Two device-push modes**: `device` (sign a CSR fetched from the device — key never
+  reaches acme-lan; preferred) and `local` (acme-lan holds the key; UI warns).
+- **Multiple ACME listeners**: named profiles under `/acme/p/<name>/`, each with its own
+  upstream — an EAB-authenticated ACME CA (DigiCert-style) or a private CA via an
+  acme2certifier-style `ca_handler` (ships a `local_ca` for WiFi/private-CA issuance).
+- **Self TLS**: acme-lan obtains and renews its own certificate and serves the admin UI /
+  ACME endpoints over trusted HTTPS.
+
+Notes on live-test coverage: local storage, the private-CA path, edge http-01, DNS-01, and
+self-cert issuance are exercised end-to-end (Pebble or in-process). External integrations
+that can't be reached from CI — Azure Key Vault, HashiCorp Vault, Postmark, and
+EAB/DigiCert — are implemented behind their SDKs/HTTP APIs and tested with mocks/fakes.
