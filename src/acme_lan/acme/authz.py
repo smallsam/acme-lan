@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..db import get_session
 from ..models import Authorization, AuthzStatus, Challenge, ChallengeStatus, Order, utcnow
 from ..validators.http01 import validate_http01
+from ..validators.tlsalpn01 import validate_tlsalpn01
 from .common import acme_json_response, read_verified
 from .encoding import Urls, profile_from_request
 from .errors import malformed, unauthorized
@@ -64,6 +65,8 @@ async def respond_challenge(
 
     if challenge.type == "http-01":
         result = await validate_http01(authz.identifier_value, challenge.token, key_authorization)
+    elif challenge.type == "tls-alpn-01":
+        result = await validate_tlsalpn01(authz.identifier_value, key_authorization)
     else:
         raise malformed(f"Challenge type {challenge.type!r} is not supported for validation yet")
 

@@ -103,11 +103,13 @@ async def new_order(request: Request, session: AsyncSession = Depends(get_sessio
         )
         session.add(authz)
         await session.flush()
-        # Wildcards require dns-01; everything else is offered http-01 for MVP.
-        challenge_type = "dns-01" if wildcard else "http-01"
-        session.add(
-            Challenge(authz_id=authz.id, type=challenge_type, token=_new_token())
-        )
+        # Wildcards require dns-01. For everything else offer both http-01 and tls-alpn-01
+        # so a client can validate without running HTTP; answering either one is enough.
+        challenge_types = ["dns-01"] if wildcard else ["http-01", "tls-alpn-01"]
+        for challenge_type in challenge_types:
+            session.add(
+                Challenge(authz_id=authz.id, type=challenge_type, token=_new_token())
+            )
 
     await session.commit()
     await session.refresh(order)

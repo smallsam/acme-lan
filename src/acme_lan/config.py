@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     # (identifier value -> "host[:port]"). Primarily used in tests.
     http01_timeout: float = 10.0
     http01_resolver_overrides: dict[str, str] = Field(default_factory=dict)
+    # tls-alpn-01 downstream validation (RFC 8737) — for clients that don't want to run HTTP.
+    tlsalpn_timeout: float = 10.0
+    tlsalpn_default_port: int = 443
+    tlsalpn_resolver_overrides: dict[str, str] = Field(default_factory=dict)
 
     # --- Upstream ACME client (the real public CA we proxy to) ---
     upstream_directory_url: str = Field(
