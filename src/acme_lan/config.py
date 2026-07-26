@@ -87,6 +87,8 @@ class Settings(BaseSettings):
     # Default port used when health-checking a certificate's domain.
     health_default_port: int = Field(default=443)
     health_timeout: float = Field(default=7.0)
+    # Split-horizon: probe a cert's domain at a different address (identifier -> "host[:port]").
+    health_resolver_overrides: dict[str, str] = Field(default_factory=dict)
 
     # --- Credential store (Phase 3) ---
     # Fernet key (urlsafe base64, 32 bytes) used to encrypt stored device credentials.

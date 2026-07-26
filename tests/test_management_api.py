@@ -93,6 +93,21 @@ async def test_probe_endpoint_reports_unreachable(tmp_path):
         assert resp.json()["reachable"] is False
 
 
+async def test_certificate_health_uses_resolver_override(tmp_path):
+    import json
+
+    app, cert_id = await _seed_app(
+        tmp_path,
+        ACME_LAN_HEALTH_RESOLVER_OVERRIDES=json.dumps({"db.lan.test": "127.0.0.1:9"}),
+    )
+    async with _client(app) as client:
+        health = (await client.get(f"/api/certificates/{cert_id}/health")).json()
+    # The probe went to the override target (127.0.0.1:9, closed) rather than the domain.
+    assert health["host"] == "127.0.0.1"
+    assert health["port"] == 9
+    assert health["reachable"] is False
+
+
 async def test_dashboard_is_served(tmp_path):
     app, _ = await _seed_app(tmp_path)
     async with _client(app) as client:

@@ -1,181 +1,136 @@
 # acme-lan
 
 An **internal ACME server** for split-horizon LANs. Point standard ACME clients
-(`certbot`, `acme.sh`) at it and they receive **real, publicly-trusted certificates** —
-even for hosts that are only reachable on your LAN and never exposed to the internet.
+(`certbot`, `acme.sh`) at it and they receive **real, publicly-trusted certificates** — even
+for hosts that only exist on your LAN and are never exposed to the internet. For devices that
+can't run ACME at all (ESXi, switches, printers…), acme-lan **issues and installs the cert
+for them**.
 
-acme-lan speaks RFC 8555 to your internal clients, then fulfils each request by acting as
-an ACME *client* to a real public CA (Let's Encrypt / ZeroSSL), proving control with a
-**DNS-01** challenge against your public zone. Only this server holds the DNS credentials.
+acme-lan speaks RFC 8555 to your internal clients, then fulfils each request by acting as an
+ACME *client* to a real public CA (Let's Encrypt / ZeroSSL), proving control with a
+**DNS-01** challenge against your public zone. Only this one server holds the DNS
+credentials.
 
 ```
  internal client            acme-lan (this server)              upstream CA (Let's Encrypt)
  certbot / acme.sh  ──ACME──▶  ACME server  ─────ACME client────▶  real issuance
-                               │  proves LAN control (http-01)
+                               │  proves LAN control (http-01 / tls-alpn-01)
                                └▶ publishes _acme-challenge TXT ──▶ upstream DNS-01 validates
 ```
 
-Think of it as a mashup of [certgrinder](https://github.com/tykling/certgrinder) (central
-host does the ACME heavy lifting) and
-[acme2certifier](https://github.com/grindsa/acme2certifier) (an ACME front-end proxying to
-a CA backend) — but the backend is a real public CA reached via DNS-01, and clients talk
-**standard ACME** so nothing on them needs to change.
+## When would I use this?
 
-## Why
+- **Internal services on a public domain.** `db.example.net` resolves to `192.168.3.5` on
+  the LAN (a real public zone in split-horizon DNS). You want a browser-trusted cert on it,
+  but it isn't reachable from the internet and you don't want to put DNS-provider API tokens
+  on every host. Run acme-lan once; point clients at it.
+- **Appliances that can't run ACME.** ESXi/vCenter, iDRAC/iLO, switches, routers, printers,
+  NAS, load balancers — acme-lan generates or signs their cert and pushes it over SSH (or a
+  custom plugin), then renews it automatically. See [device push](#device-push) below.
+- **Kill TLS warnings everywhere on the LAN**, including on acme-lan's own dashboard (it can
+  [certify itself](docs/DEPLOYMENT.md#6-serving-acme-lan-over-trusted-https)).
+- **Front a CA that isn't Let's Encrypt.** Proxy to an EAB-authenticated CA (e.g. DigiCert),
+  or issue from a **private CA** for things like WiFi/EAP certificates — all through the same
+  standard ACME interface. See [multiple listeners](docs/DEPLOYMENT.md#9-extra-acme-listeners-digicert--private-ca).
 
-Split-horizon DNS means `db.example.net` resolves to `192.168.3.5` on the LAN while
-`example.net` is a real public zone. Internal hosts want real certs but:
+If your hosts *can* reach the internet and hold DNS credentials, you may not need acme-lan —
+a normal ACME client with a DNS plugin is simpler. acme-lan earns its keep when the hosts are
+isolated, can't run ACME, or you want one place to manage and monitor every LAN certificate.
 
-- they aren't publicly reachable, so plain HTTP-01 to Let's Encrypt won't work, and
-- they shouldn't each hold DNS-provider API credentials.
+## Dashboard
 
-acme-lan solves both: clients do a normal ACME exchange with a server on the LAN, and the
-one server that *does* hold DNS credentials performs the real DNS-01 issuance upstream.
+The built-in dashboard lists every issued certificate with a **realtime TLS health** badge
+(a raw-TLS probe — works for LDAPS/SMTPS/etc., not just HTTPS), manages device-push hosts,
+and can probe any `host:port` on demand.
 
-## Status
+![acme-lan dashboard](docs/img/dashboard.png)
 
-Phases 1 and 2 are implemented; see [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full plan.
+## Device push
 
-**Phase 1 — core ACME proxy:**
+For hardware that can't run an ACME client, register it as a **managed host** and acme-lan
+handles issuance + installation + renewal. Two modes:
 
-- RFC 8555 server: directory, newNonce, newAccount, newOrder, authorizations, challenges
-  (http-01 downstream validation), finalize, certificate download, revoke.
-- Upstream client (certbot's `acme` library) that issues via **DNS-01**.
-- DNS providers: **Cloudflare** (real) and **pebble-challtestsrv** (tests). Pluggable.
-- SQLite storage; single self-contained FastAPI app.
-- End-to-end test: real ACME client → acme-lan → **Pebble** upstream → a valid chain.
+- **`device` (preferred)** — acme-lan retrieves a CSR from the device, signs it, and pushes
+  back only the certificate. **The private key never leaves the device.**
+- **`local`** — acme-lan generates the key + CSR and pushes both (the key is stored
+  encrypted; the UI warns).
 
-**Phase 2 — web dashboard + realtime TLS health:**
+Certificates are installed through **deploy plugins**. Built-ins: `local` (write files + run
+a reload command) and `ssh` (SFTP upload + reload) — and since most network gear is driven
+over SSH/CLI, writing a vendor-specific plugin is straightforward. **See
+[docs/PLUGINS.md](docs/PLUGINS.md)** for the interface and a worked SSH/CLI switch example.
 
-- Management REST API (`/api/...`): certificate list/detail, order stats.
-- Realtime TLS health probe (raw TLS, works for LDAPS/SMTPS/etc.) via
-  `POST /api/health/probe` and `GET /api/certificates/{id}/health`.
-- Vue 3 + Vite + TailwindCSS dashboard (`src/acme_lan/web`) with live health badges and an
-  ad-hoc probe form, served by the app when built.
-- Optional admin bearer token (`ACME_LAN_ADMIN_TOKEN`) gating the management API only.
+Typical use cases: push a trusted cert to **ESXi** (`/etc/vmware/ssl` + restart hostd), a
+**switch/router** via its CLI, a **printer** or **iDRAC**, then let the auto-renew scheduler
+keep them current and warn you (email/webhook) before anything expires.
 
-**Phase 3 — managed hosts + device push:**
+## Features
 
-- Host registry + Fernet-encrypted credential store for devices that can't run ACME.
-- Deploy plugins (`local`, `ssh`) with a registry for adding more.
-- For a managed host, acme-lan generates the key + CSR, issues via the upstream proxy, and
-  pushes cert + key to the device (`POST /api/hosts/{id}/renew`); renewal selection picks
-  hosts expiring within `ACME_LAN_RENEW_BEFORE_DAYS`.
+- **Standard ACME server** (RFC 8555): downstream **http-01** *and* **tls-alpn-01**
+  validation, so clients that don't want to run HTTP can use TLS instead.
+- **Upstream via DNS-01** (Cloudflare / acme-dns) — or an **edge HTTP-01** path if the server
+  is publicly reachable.
+- **Realtime TLS health dashboard** + REST API; certificate lifecycle tracking, **retire**,
+  and **expiry notifications** (Postmark email + webhook).
+- **Device push** with `device`/`local` CSR modes and pluggable deploy plugins.
+- **Multiple ACME listeners** under `/acme/p/<name>/`, each with its own upstream —
+  EAB-authenticated CAs (DigiCert) or a **private CA** (acme2certifier-style `ca_handler`).
+- **Pluggable secret storage** — device credentials and issued cert/key bundles can live in
+  the local (encrypted) DB, **Azure Key Vault**, or **HashiCorp Vault**.
+- **Self-service HTTPS**, **auto-renew**, **auto-migrating** container image, and a policy of
+  **no plaintext private keys at rest** ([SECURITY.md](docs/SECURITY.md)).
 
-**Phase 4 — hardening / ops:**
-
-- Edge **HTTP-01 upstream** path (`ACME_LAN_UPSTREAM_CHALLENGE=http-01`) as a pluggable
-  alternative to DNS-01, plus an **acme-dns** DNS provider.
-- Background **auto-renew scheduler** (`ACME_LAN_AUTO_RENEW_ENABLED`) and nonce/order GC.
-- `Dockerfile` (serves the pre-built dashboard) and structured logging.
-
-**Certificate lifecycle & delivery:**
-
-- Every issued cert is tracked (renewals are new rows); the dashboard shows days-to-expiry
-  and warns; **retire** a cert (`POST /api/certificates/{id}/retire`) so it stops warning.
-- **Expiry notifications** over pluggable channels: **Postmark** email + generic webhook.
-- Pluggable **key/cert storage**: local (encrypted in DB), **Azure Key Vault**, **Vault**.
-
-**Device push — two modes:**
-
-- `csr_source="device"` (preferred): sign a CSR fetched from the device; the private key
-  never touches acme-lan. `csr_source="local"`: acme-lan generates the key (UI warns).
-
-**Multiple ACME listeners:**
-
-- Named profiles under `/acme/p/<name>/` each proxy to a different upstream — an
-  EAB-authenticated ACME CA (e.g. DigiCert) or a **private CA** via an acme2certifier-style
-  `ca_handler` (ships a `local_ca` that signs CSRs, for WiFi/private-CA certs).
-
-**Self TLS:** with `ACME_LAN_SERVICE_DOMAIN` + `SELF_CERT_ENABLED`, acme-lan obtains and
-renews its **own** certificate and serves the admin UI / ACME endpoints over trusted HTTPS
-— eliminating cert warnings across the LAN.
-
-## Quickstart
+## Quickstart (Docker)
 
 ```bash
-uv sync --extra dev
-
-# Configure (see .env.example for all options)
-cp .env.example .env
-$EDITOR .env      # set upstream + Cloudflare token
-
-uv run acme-lan   # serves http://localhost:8000/acme/directory
+docker run -d --name acme-lan -p 8000:8000 -v acme-lan-data:/app/data \
+  -e ACME_LAN_EXTERNAL_URL="http://acme-lan.example.net:8000" \
+  -e ACME_LAN_SECRET_KEY="$(python -c 'from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())')" \
+  -e ACME_LAN_DNS_PROVIDER="cloudflare" \
+  -e ACME_LAN_CLOUDFLARE_API_TOKEN="<token>" \
+  ghcr.io/smallsam/acme-lan:latest      # defaults to Let's Encrypt staging
 ```
 
 Point a client at it:
 
 ```bash
-acme.sh --issue -d db.example.net --server http://acme-lan.lan:8000/acme/directory ...
-# or
-certbot certonly --server http://acme-lan.lan:8000/acme/directory ...
+acme.sh --issue -d db.example.net --server http://acme-lan.example.net:8000/acme/directory ...
+certbot certonly --server http://acme-lan.example.net:8000/acme/directory -d db.example.net ...
 ```
 
-## How a request flows
+Full install/config, the self-HTTPS option, and a Compose file are in the
+**[deployment guide](docs/DEPLOYMENT.md)**. To run from source: `uv sync && uv run acme-lan`.
 
-1. Client does `newAccount` / `newOrder` for `db.example.net`.
-2. acme-lan returns an **http-01** challenge; the client serves the token and acme-lan
-   validates it by fetching it over the LAN (defence-in-depth / protocol compliance).
-3. At **finalize** the client submits its CSR. acme-lan opens an order at the upstream CA
-   for the same names, publishes the `_acme-challenge` TXT record via the DNS provider,
-   answers the upstream **DNS-01** challenge, and finalizes upstream **with the client's
-   own CSR** — so the issued cert matches the client's private key.
-4. acme-lan returns the upstream-issued chain to the client.
+## How issuance works
 
-## Testing
-
-```bash
-uv run pytest -q            # unit + provider tests
-uv run pytest tests/e2e -q  # end-to-end (needs a Pebble upstream, see below)
-```
-
-The e2e suite runs a real ACME client against acme-lan with **Pebble** (Let's Encrypt's
-reference test CA) + **pebble-challtestsrv** as the upstream, and asserts a valid chain is
-returned whose leaf key matches the client's CSR.
-
-The `pebble` fixture prefers locally-built Go binaries and skips cleanly if they're absent:
-
-```bash
-go install github.com/letsencrypt/pebble/v2/cmd/pebble@latest
-go install github.com/letsencrypt/pebble/v2/cmd/pebble-challtestsrv@latest
-# binaries land in $(go env GOPATH)/bin — put that on PATH, or point the fixture at them
-# with PEBBLE_BIN / CHALLTESTSRV_BIN.
-```
-
-A Docker Compose alternative for the same two services is provided in
-[`docker-compose.test.yml`](docker-compose.test.yml).
+1. The client does `newAccount` / `newOrder`, then validates control of the name to acme-lan
+   over the LAN (http-01 or tls-alpn-01).
+2. At **finalize** the client submits its CSR. acme-lan opens an order at the upstream CA for
+   the same names, satisfies the upstream **DNS-01** challenge via your DNS provider, and
+   finalizes upstream **with the client's own CSR** — so the issued cert matches the client's
+   private key. acme-lan returns the chain.
 
 ## Documentation
 
-- [Deployment guide](docs/DEPLOYMENT.md) — install, configure, and go live.
-- [Operations & maintenance](docs/MAINTENANCE.md) — upgrades, backups, renewals, troubleshooting.
-- [Security / key handling](docs/SECURITY.md) — where private keys live (and don't).
-- [Roadmap](docs/ROADMAP.md) — what's built and what's planned.
+- **[Deployment](docs/DEPLOYMENT.md)** — install, configure, go live.
+- **[Operations & maintenance](docs/MAINTENANCE.md)** — upgrades, backups, renewals, troubleshooting.
+- **[Device-push plugins](docs/PLUGINS.md)** — the plugin interface + an SSH/CLI example.
+- **[Security / key handling](docs/SECURITY.md)** — where private keys live (and don't).
+- **[Roadmap](docs/ROADMAP.md)** — history and planned work.
 
-## Deployment & development
+## Development & testing
 
-- **Docker:** the `Dockerfile` builds a self-contained image (the dashboard is pre-built).
-  Tagging a release `vX.Y.Z` triggers [`.github/workflows/release.yml`](.github/workflows/release.yml)
-  to build a multi-arch image and push it to Docker Hub (set `DOCKERHUB_USERNAME` /
-  `DOCKERHUB_TOKEN` secrets). The container entrypoint **auto-migrates** the database
-  (Alembic schema + idempotent data migrations) before serving, so upgrading the image
-  upgrades an existing volume in place.
-- **Dev container:** open in a [devcontainer](.devcontainer/devcontainer.json) (Python +
-  Node + Go + Docker); the post-create installs all deps and builds the Pebble test
-  binaries so `uv run pytest -q` works immediately.
-- **CI:** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs ruff + the full test
-  suite (including the Pebble-backed e2e tests) on every push/PR.
+```bash
+uv sync --extra dev
+uv run pytest -q                # unit + integration
+uv run pytest tests/e2e -q      # e2e against a Pebble upstream (Go binaries or Docker)
+cd src/acme_lan/web && npm ci && npm run test:e2e   # Playwright UI tests
+```
 
-## Security (key handling)
-
-No private key material is stored in the database or on disk in the clear (the one opt-in
-exception is device-push local key generation). See [`docs/SECURITY.md`](docs/SECURITY.md).
-Device-push credentials and issued cert/key bundles can live in **Azure Key Vault** or
-**HashiCorp Vault** instead of the local (encrypted) database.
-
-## Configuration
-
-All settings use the `ACME_LAN_` env prefix; see [`.env.example`](.env.example).
+Open the repo in the [devcontainer](.devcontainer/devcontainer.json) for a batteries-included
+setup. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs lint, the Python
+suite, and the Playwright UI tests on every push; tagging `vX.Y.Z` publishes a multi-arch
+image to Docker Hub.
 
 ## License
 

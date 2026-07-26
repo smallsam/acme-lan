@@ -160,8 +160,12 @@ async def certificate_health(
         raise HTTPException(status_code=400, detail="Certificate has no domain to probe")
     settings = get_settings()
     domain = domains[0].lstrip("*.")
+    # In split-horizon LANs the cert's domain may need probing at a different address.
+    target = settings.health_resolver_overrides.get(domain, domain)
+    host, _, override_port = target.partition(":")
+    probe_port = port or (int(override_port) if override_port else settings.health_default_port)
     health = await probe_tls(
-        domain, port or settings.health_default_port, timeout=settings.health_timeout
+        host, probe_port, server_name=domain, timeout=settings.health_timeout
     )
     return health.to_dict()
 

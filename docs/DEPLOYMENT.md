@@ -231,7 +231,8 @@ installs the cert. Configure via the dashboard or the API (`/api/hosts`, `/api/c
     the UI warns).
 - **Deploy plugins** (`GET /api/deploy-plugins`): `local` (write files + reload command) and
   `ssh` (SFTP upload + reload). Config is plugin-specific (e.g. `remote_cert_path`,
-  `remote_key_path`, `reload_command`, `remote_csr_path`/`csr_command`).
+  `remote_key_path`, `reload_command`, `remote_csr_path`/`csr_command`). Writing your own
+  (e.g. a vendor CLI over SSH) is covered in **[docs/PLUGINS.md](PLUGINS.md)**.
 - **Credentials** (`/api/credentials`): `provider=local` stores a Fernet-encrypted secret;
   `provider=azure_keyvault`/`vault` store only a reference and fetch the secret at deploy
   time. Requires `ACME_LAN_SECRET_KEY` (local) or the relevant provider settings.
@@ -294,3 +295,8 @@ curl -fsS https://acme-lan.example.net/api/certificates
 
 Once verified against staging, switch `ACME_LAN_UPSTREAM_DIRECTORY_URL` to production and
 restart.
+
+The dashboard (at `ACME_LAN_EXTERNAL_URL`) then shows every certificate with a live health
+badge, the managed-host list, and an ad-hoc TLS probe:
+
+![acme-lan dashboard](img/dashboard.png)
