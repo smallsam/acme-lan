@@ -156,7 +156,7 @@ onMounted(loadAll)
       <!-- Stats -->
       <section class="grid grid-cols-2 gap-4 sm:grid-cols-3">
         <div class="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
-          <div class="text-2xl font-semibold">{{ stats?.certificates_total ?? '—' }}</div>
+          <div class="text-2xl font-semibold" data-testid="stat-certificates">{{ stats?.certificates_total ?? '—' }}</div>
           <div class="text-xs text-slate-500 dark:text-slate-400">Certificates issued</div>
         </div>
         <div class="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
@@ -259,7 +259,7 @@ onMounted(loadAll)
         <div class="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
           <div class="flex flex-wrap items-end gap-3">
             <label class="text-xs"><span class="mb-1 block text-slate-500 dark:text-slate-400">Name</span>
-              <input v-model="newHost.name" class="w-32 rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-800" /></label>
+              <input v-model="newHost.name" placeholder="esxi01" class="w-32 rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-800" /></label>
             <label class="text-xs"><span class="mb-1 block text-slate-500 dark:text-slate-400">Domains (comma-sep)</span>
               <input v-model="newHost.domains" placeholder="esxi01.lan" class="w-48 rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-800" /></label>
             <label class="text-xs"><span class="mb-1 block text-slate-500 dark:text-slate-400">Address</span>

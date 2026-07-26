@@ -173,6 +173,19 @@ All extension points use small registries:
 
 Run the test suite after changes: `uv run pytest -q` (CI does the same on every push).
 
+**UI tests (Playwright):** dashboard behaviour is covered by Playwright specs in
+`src/acme_lan/web/e2e/`, which run the built SPA against a seeded backend
+(`tests/ui_server.py`). Locally:
+
+```bash
+cd src/acme_lan/web
+npm ci && npm run build
+npx playwright install chromium
+npm run test:e2e
+```
+
+CI runs them in the `ui` job (see `.github/workflows/ci.yml`).
+
 ## Scaling & limitations
 
 acme-lan is designed as a **single instance** for a LAN:

@@ -35,3 +35,42 @@ jobs:
 
       - name: Test
         run: uv run pytest -q
+
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv (for the seeded test server)
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python deps
+        run: uv sync
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build the dashboard
+        working-directory: src/acme_lan/web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install Playwright (Chromium)
+        working-directory: src/acme_lan/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright UI tests
+        working-directory: src/acme_lan/web
+        run: npm run test:e2e
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: src/acme_lan/web/playwright-report
+          retention-days: 7
