@@ -50,6 +50,7 @@ class DeployResult:
 class DeployPlugin(abc.ABC):
     name: str = "base"                 # unique registry name (what csr uses in the UI/API)
     supports_csr_retrieval: bool = False
+    fields: ClassVar[list[PluginField]] = []   # config the dashboard renders as a form
 
     @abc.abstractmethod
     def deploy(self, ctx: DeployContext) -> DeployResult:
@@ -68,9 +69,44 @@ Plugin methods are **synchronous** — acme-lan runs them in a worker thread, so
 (SSH, HTTP, subprocess) is fine. Return a `DeployResult`; raising is also caught and recorded
 on the host as `last_status`.
 
-`config` is whatever JSON you put on the host (dashboard "Config (JSON)" field or the
-`config` object in `POST /api/hosts`). Validate the keys your plugin needs and return
+`config` is a free-form dict on the host. Validate the keys your plugin needs and return
 `DeployResult(False, "...")` if they're missing.
+
+### Declaring config fields for the UI
+
+So operators get a real form instead of a raw-JSON box, declare the config your plugin
+understands with `PluginField`. The "Add / Edit host" modal reads these from
+`GET /api/deploy-plugins` and renders exactly the right inputs, updating as the plugin or CSR
+mode changes:
+
+```python
+from typing import ClassVar
+
+from acme_lan.deploy.base import DeployPlugin, PluginField
+
+
+class SwitchCliPlugin(DeployPlugin):
+    name = "switch-cli"
+    supports_csr_retrieval = True
+    fields: ClassVar[list[PluginField]] = [
+        PluginField(
+            "remote_cert_path", "Remote certificate path", required=True,
+            modes=("device", "local"), placeholder="/flash/acme.crt",
+            help="Path on the device to write the certificate chain to.",
+        ),
+        PluginField(
+            "csr_command", "CSR command", type="textarea", modes=("device",),
+            help="Command run on the device that prints a CSR to stdout.",
+        ),
+        PluginField("reload_command", "Reload command", modes=("device", "local")),
+        PluginField("port", "SSH port", type="number", placeholder="22"),
+    ]
+```
+
+`PluginField` fields: `key`, `label`, `type` (`text` | `number` | `textarea` | `password`),
+`required`, `modes` (which `csr_source` values the field applies to — the form filters by the
+selected mode), `placeholder`, and `help`. Declaring fields is optional — a plugin with none
+still works — but it's what turns the add-host flow into a guided form.
 
 ## Registering a plugin
 

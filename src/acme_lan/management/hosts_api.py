@@ -9,11 +9,13 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..certlifecycle import expiry_info
+from ..config import get_settings
 from ..credentials import encrypt_secret
 from ..db import get_session
-from ..deploy.factory import available_plugins
+from ..deploy.factory import available_plugins, plugin_specs
 from ..hosts import renew_and_deploy
-from ..models import ManagedHost, StoredCredential
+from ..models import Certificate, ManagedHost, StoredCredential
 from .auth import require_admin
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_admin)])
@@ -25,7 +27,34 @@ LOCAL_KEY_WARNING = (
 )
 
 
-def _host_view(host: ManagedHost) -> dict[str, Any]:
+def _cert_summary(cert: Certificate, warn_days: int) -> dict[str, Any]:
+    view = {
+        "id": cert.id,
+        "primary_domain": (cert.domains or [None])[0],
+        "domains": cert.domains,
+        "not_after": cert.not_after.isoformat() if cert.not_after else None,
+        "issued_at": cert.issued_at.isoformat() if cert.issued_at else None,
+        "retired": cert.retired,
+    }
+    view.update(expiry_info(cert, warn_days))
+    return view
+
+
+async def _host_certs(host_id: str, session: AsyncSession) -> list[Certificate]:
+    return list(
+        (
+            await session.execute(
+                select(Certificate)
+                .where(Certificate.host_id == host_id)
+                .order_by(Certificate.issued_at.desc())
+            )
+        ).scalars().all()
+    )
+
+
+async def _host_view(host: ManagedHost, session: AsyncSession) -> dict[str, Any]:
+    warn_days = get_settings().expiry_warn_days
+    certs = await _host_certs(host.id, session)
     view = {
         "id": host.id,
         "name": host.name,
@@ -39,6 +68,9 @@ def _host_view(host: ManagedHost) -> dict[str, Any]:
         "enabled": host.enabled,
         "last_deployed_at": host.last_deployed_at.isoformat() if host.last_deployed_at else None,
         "last_status": host.last_status,
+        # Link the host to the certificates it has been issued.
+        "certificate_count": len(certs),
+        "latest_certificate": _cert_summary(certs[0], warn_days) if certs else None,
     }
     if host.csr_source == "local":
         view["warning"] = LOCAL_KEY_WARNING
@@ -70,14 +102,15 @@ class HostUpdate(BaseModel):
 
 
 @router.get("/deploy-plugins")
-async def deploy_plugins() -> list[str]:
-    return available_plugins()
+async def deploy_plugins() -> list[dict[str, Any]]:
+    """Each plugin with the config fields it needs, so the UI can render a real form."""
+    return plugin_specs()
 
 
 @router.get("/hosts")
 async def list_hosts(session: AsyncSession = Depends(get_session)) -> list[dict[str, Any]]:
     hosts = (await session.execute(select(ManagedHost))).scalars().all()
-    return [_host_view(h) for h in hosts]
+    return [await _host_view(h, session) for h in hosts]
 
 
 @router.post("/hosts", status_code=201)
@@ -101,7 +134,7 @@ async def create_host(
     session.add(host)
     await session.commit()
     await session.refresh(host)
-    return _host_view(host)
+    return await _host_view(host, session)
 
 
 @router.get("/hosts/{host_id}")
@@ -109,7 +142,19 @@ async def get_host(host_id: str, session: AsyncSession = Depends(get_session)) -
     host = await session.get(ManagedHost, host_id)
     if host is None:
         raise HTTPException(404, "Host not found")
-    return _host_view(host)
+    return await _host_view(host, session)
+
+
+@router.get("/hosts/{host_id}/certificates")
+async def host_certificates(
+    host_id: str, session: AsyncSession = Depends(get_session)
+) -> list[dict[str, Any]]:
+    """Certificates issued for this host (newest first) — the cert↔device link."""
+    host = await session.get(ManagedHost, host_id)
+    if host is None:
+        raise HTTPException(404, "Host not found")
+    warn_days = get_settings().expiry_warn_days
+    return [_cert_summary(c, warn_days) for c in await _host_certs(host_id, session)]
 
 
 @router.patch("/hosts/{host_id}")
@@ -119,12 +164,26 @@ async def update_host(
     host = await session.get(ManagedHost, host_id)
     if host is None:
         raise HTTPException(404, "Host not found")
-    for field, value in body.model_dump(exclude_unset=True).items():
+    updates = body.model_dump(exclude_unset=True)
+    if "deploy_plugin" in updates and updates["deploy_plugin"] not in available_plugins():
+        raise HTTPException(400, f"Unknown deploy plugin {updates['deploy_plugin']!r}")
+    if updates.get("csr_source") not in (None, "device", "local"):
+        raise HTTPException(400, "csr_source must be 'device' or 'local'")
+    for field, value in updates.items():
         setattr(host, field, value)
+    # Re-validate the device-mode requirement against the (possibly updated) plugin.
+    if host.csr_source == "device":
+        from ..deploy.factory import get_deploy_plugin
+
+        if not get_deploy_plugin(host.deploy_plugin).supports_csr_retrieval:
+            raise HTTPException(
+                400,
+                f"deploy plugin {host.deploy_plugin!r} cannot retrieve a CSR from the device",
+            )
     session.add(host)
     await session.commit()
     await session.refresh(host)
-    return _host_view(host)
+    return await _host_view(host, session)
 
 
 @router.delete("/hosts/{host_id}", status_code=204)

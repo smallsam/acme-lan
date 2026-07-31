@@ -48,13 +48,23 @@ async def _seed() -> None:
                 not_after=utcnow() + timedelta(days=10),  # expiring soon -> amber badge
             )
         )
+        host = ManagedHost(
+            name="printer01",
+            domains=["printer01.lan.test"],
+            address="192.168.3.9",
+            deploy_plugin="local",
+            csr_source="device",
+        )
+        session.add(host)
+        await session.flush()
+        # A cert pushed to the managed host, so the cert<->device link renders both ways.
         session.add(
-            ManagedHost(
-                name="printer01",
+            Certificate(
+                host_id=host.id,
                 domains=["printer01.lan.test"],
-                address="192.168.3.9",
-                deploy_plugin="local",
-                csr_source="device",
+                subject="CN=printer01.lan.test",
+                serial="ef34gh",
+                not_after=utcnow() + timedelta(days=60),
             )
         )
         await session.commit()

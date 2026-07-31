@@ -111,9 +111,25 @@ async def _seed() -> None:
             session.add(
                 Order(account_id="x", identifiers=[{"type": "dns", "value": value}], status=status)
             )
+        hosts = [
+            ("esxi01", ["esxi01.lan.test"], "192.168.3.5", "ssh", "device", "deployed"),
+            ("printer-hp", ["printer.lan.test"], "192.168.3.20", "ssh", "device", "deployed"),
+            ("switch-core", ["switch.lan.test"], "192.168.3.1", "ssh", "local", None),
+        ]
+        host_by_domain: dict[str, str] = {}
+        for name, domains, addr, plugin, csr, status in hosts:
+            host = ManagedHost(
+                name=name, domains=domains, address=addr, deploy_plugin=plugin,
+                csr_source=csr, last_status=status,
+                last_deployed_at=now if status else None,
+            )
+            session.add(host)
+            await session.flush()
+            host_by_domain[domains[0]] = host.id
+
         certs = [
-            ("db.lan.test", 74),        # healthy (reachable)
-            ("esxi01.lan.test", 11),    # expiring soon (reachable)
+            ("db.lan.test", 74),        # healthy (reachable), ACME-client cert
+            ("esxi01.lan.test", 11),    # expiring soon (reachable), pushed to esxi01
             ("wiki.lan.test", 45),      # healthy but not reachable -> "unreachable"
             ("old-app.lan.test", -3),   # expired
         ]
@@ -124,19 +140,8 @@ async def _seed() -> None:
                     subject=f"CN={domain}",
                     serial=f"{abs(days):02x}ffee",
                     not_after=now + timedelta(days=days),
-                )
-            )
-        hosts = [
-            ("esxi01", ["esxi01.lan.test"], "192.168.3.5", "ssh", "device", "deployed"),
-            ("printer-hp", ["printer.lan.test"], "192.168.3.20", "ssh", "device", "deployed"),
-            ("switch-core", ["switch.lan.test"], "192.168.3.1", "ssh", "local", None),
-        ]
-        for name, domains, addr, plugin, csr, status in hosts:
-            session.add(
-                ManagedHost(
-                    name=name, domains=domains, address=addr, deploy_plugin=plugin,
-                    csr_source=csr, last_status=status,
-                    last_deployed_at=now if status else None,
+                    # Link device certs back to the host they were pushed to.
+                    host_id=host_by_domain.get(domain),
                 )
             )
         await session.commit()

@@ -9,10 +9,24 @@ from __future__ import annotations
 
 import abc
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 from ..credentials import DecryptedCredential
 from ..models import ManagedHost
+
+
+@dataclass
+class PluginField:
+    """A config field a plugin needs, so the UI can render a real form (not raw JSON)."""
+
+    key: str
+    label: str
+    type: str = "text"  # text | number | textarea | password
+    required: bool = False
+    # Which CSR modes the field applies to; the UI shows only the relevant ones.
+    modes: tuple[str, ...] = ("device", "local")
+    placeholder: str = ""
+    help: str = ""
 
 
 @dataclass
@@ -36,6 +50,8 @@ class DeployPlugin(abc.ABC):
     # Whether this plugin can retrieve a CSR from the device (enables the preferred,
     # key-never-leaves-the-device mode).
     supports_csr_retrieval: bool = False
+    # Config fields this plugin understands (rendered as form fields by the dashboard).
+    fields: ClassVar[list[PluginField]] = []
 
     @abc.abstractmethod
     def deploy(self, ctx: DeployContext) -> DeployResult:

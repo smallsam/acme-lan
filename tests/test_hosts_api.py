@@ -65,7 +65,51 @@ async def test_credentials_are_write_only(fresh_db):
         assert "secret" not in listed[0]
 
 
-async def test_deploy_plugins_endpoint(fresh_db):
+async def test_deploy_plugins_endpoint_returns_schema(fresh_db):
     async with _client() as client:
         plugins = (await client.get("/api/deploy-plugins")).json()
-        assert "local" in plugins and "ssh" in plugins
+        by_name = {p["name"]: p for p in plugins}
+        assert {"local", "ssh"} <= by_name.keys()
+        # Each plugin declares the config fields the UI should render.
+        ssh = by_name["ssh"]
+        assert ssh["supports_csr_retrieval"] is True
+        keys = {f["key"] for f in ssh["fields"]}
+        assert {"remote_cert_path", "remote_key_path", "csr_command", "port"} <= keys
+        # Fields carry the mode(s) they apply to, so the form can filter by csr_source.
+        remote_key = next(f for f in ssh["fields"] if f["key"] == "remote_key_path")
+        assert remote_key["required"] is True
+        assert "local" in remote_key["modes"]
+
+
+async def test_host_certificate_linkage(fresh_db):
+    from datetime import UTC, datetime, timedelta
+
+    from acme_lan.db import session_scope
+    from acme_lan.models import Certificate, ManagedHost
+
+    async with session_scope() as session:
+        host = ManagedHost(name="esxi01", domains=["esxi01.lan.test"], address="192.168.3.5")
+        session.add(host)
+        await session.flush()
+        session.add(
+            Certificate(
+                host_id=host.id, domains=["esxi01.lan.test"],
+                not_after=datetime.now(UTC) + timedelta(days=40),
+            )
+        )
+        await session.commit()
+        host_id = host.id
+
+    async with _client() as client:
+        # host -> its latest certificate + count
+        host_view = (await client.get(f"/api/hosts/{host_id}")).json()
+        assert host_view["certificate_count"] == 1
+        assert host_view["latest_certificate"]["primary_domain"] == "esxi01.lan.test"
+
+        host_certs = (await client.get(f"/api/hosts/{host_id}/certificates")).json()
+        assert len(host_certs) == 1
+
+        # certificate -> its device host (reverse link)
+        certs = (await client.get("/api/certificates")).json()
+        cert = next(c for c in certs if c["host_id"] == host_id)
+        assert cert["host_name"] == "esxi01"

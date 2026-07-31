@@ -60,6 +60,13 @@ a reload command) and `ssh` (SFTP upload + reload) — and since most network ge
 over SSH/CLI, writing a vendor-specific plugin is straightforward. **See
 [docs/PLUGINS.md](docs/PLUGINS.md)** for the interface and a worked SSH/CLI switch example.
 
+Adding a host is a guided form, not a JSON blob: pick a deploy plugin and the modal renders
+exactly the config fields that plugin needs, adapting as you switch plugin or CSR mode. Every
+issued certificate is linked back to the device it was pushed to (and vice-versa) on the
+dashboard.
+
+![Add device host modal](docs/img/add-host-modal.png)
+
 Typical use cases: push a trusted cert to **ESXi** (`/etc/vmware/ssl` + restart hostd), a
 **switch/router** via its CLI, a **printer** or **iDRAC**, then let the auto-renew scheduler
 keep them current and warn you (email/webhook) before anything expires.

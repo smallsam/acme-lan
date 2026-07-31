@@ -18,7 +18,7 @@ from ..certlifecycle import (
 from ..config import get_settings
 from ..db import get_session
 from ..health import probe_tls
-from ..models import Certificate, Order
+from ..models import Certificate, ManagedHost, Order
 from .auth import require_admin
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_admin)])
@@ -44,10 +44,14 @@ async def _certificate_view(cert: Certificate, session: AsyncSession) -> dict[st
         "not_after": cert.not_after.isoformat() if cert.not_after else None,
         "issued_at": cert.issued_at.isoformat() if cert.issued_at else None,
         "host_id": cert.host_id,
+        "host_name": None,
         "key_storage": cert.key_storage,
         "retired": cert.retired,
         "retired_reason": cert.retired_reason,
     }
+    if cert.host_id:
+        host = await session.get(ManagedHost, cert.host_id)
+        view["host_name"] = host.name if host else None
     view.update(expiry_info(cert, warn_days))
     return view
 

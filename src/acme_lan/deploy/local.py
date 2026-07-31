@@ -15,12 +15,31 @@ from __future__ import annotations
 import os
 import subprocess
 
-from .base import DeployContext, DeployPlugin, DeployResult
+from .base import DeployContext, DeployPlugin, DeployResult, PluginField
 
 
 class LocalDeployPlugin(DeployPlugin):
     name = "local"
     supports_csr_retrieval = True
+    fields = [
+        PluginField(
+            "cert_path", "Certificate path", required=True, modes=("device", "local"),
+            placeholder="/etc/ssl/app.crt", help="Where to write the certificate chain (PEM).",
+        ),
+        PluginField(
+            "key_path", "Private key path", required=True, modes=("local",),
+            placeholder="/etc/ssl/app.key", help="Where to write the private key (local mode).",
+        ),
+        PluginField(
+            "csr_path", "CSR path", required=True, modes=("device",),
+            placeholder="/etc/ssl/app.csr",
+            help="Read the device-generated CSR from here (device mode).",
+        ),
+        PluginField(
+            "reload_command", "Reload command", modes=("device", "local"),
+            placeholder="systemctl reload nginx", help="Optional command to run after writing.",
+        ),
+    ]
 
     def fetch_csr(self, ctx: DeployContext) -> str:
         """Read a CSR the local service generated itself (key never leaves the device)."""

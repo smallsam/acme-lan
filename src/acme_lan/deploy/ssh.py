@@ -22,12 +22,41 @@ from __future__ import annotations
 
 import io
 
-from .base import DeployContext, DeployPlugin, DeployResult
+from .base import DeployContext, DeployPlugin, DeployResult, PluginField
 
 
 class SshDeployPlugin(DeployPlugin):
     name = "ssh"
     supports_csr_retrieval = True
+    fields = [
+        PluginField(
+            "remote_cert_path", "Remote certificate path", required=True,
+            modes=("device", "local"), placeholder="/etc/ssl/device.crt",
+            help="Path on the device to upload the certificate chain to.",
+        ),
+        PluginField(
+            "remote_key_path", "Remote key path", required=True, modes=("local",),
+            placeholder="/etc/ssl/device.key", help="Path to upload the private key (local mode).",
+        ),
+        PluginField(
+            "remote_csr_path", "Remote CSR path", modes=("device",),
+            placeholder="/etc/ssl/device.csr",
+            help="Read the device's CSR from this path (or use a CSR command).",
+        ),
+        PluginField(
+            "csr_command", "CSR command", type="textarea", modes=("device",),
+            placeholder="openssl req -new -key /etc/ssl/device.key -subj /CN=host ...",
+            help="Command run on the device that prints a CSR to stdout (alternative to a path).",
+        ),
+        PluginField(
+            "reload_command", "Reload command", modes=("device", "local"),
+            placeholder="/etc/init.d/hostd restart",
+            help="Optional command to run after installing.",
+        ),
+        PluginField(
+            "port", "SSH port", type="number", modes=("device", "local"), placeholder="22",
+        ),
+    ]
 
     # --- connection helpers ---
     def _connect(self, ctx: DeployContext):

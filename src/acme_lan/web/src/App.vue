@@ -5,10 +5,14 @@ import {
   getToken,
   setToken,
   type Certificate,
+  type CertSummary,
+  type Credential,
+  type DeployPluginSpec,
   type ManagedHost,
   type Stats,
   type TlsHealth,
 } from './api'
+import HostModal from './HostModal.vue'
 
 const stats = ref<Stats | null>(null)
 const certificates = ref<Certificate[]>([])
@@ -18,7 +22,12 @@ const token = ref<string>(getToken())
 
 const hosts = ref<ManagedHost[]>([])
 const hostMsg = ref<string>('')
-const newHost = reactive({ name: '', domains: '', address: '', port: 443, deploy_plugin: 'local', csr_source: 'device', config: '' })
+const deployPlugins = ref<DeployPluginSpec[]>([])
+const credentials = ref<Credential[]>([])
+
+// Modal state: closed when null; editing an existing host or adding a new one.
+const modalOpen = ref(false)
+const editingHost = ref<ManagedHost | null>(null)
 
 const probeForm = reactive({ host: '', port: 443, server_name: '' })
 const probeResult = ref<TlsHealth | null>(null)
@@ -30,6 +39,8 @@ async function loadAll() {
     stats.value = await api.stats()
     certificates.value = await api.certificates()
     hosts.value = await api.hosts().catch(() => [])
+    deployPlugins.value = await api.deployPlugins().catch(() => [])
+    credentials.value = await api.credentials().catch(() => [])
     // Kick off a realtime health probe for every certificate.
     for (const cert of certificates.value) checkHealth(cert.id)
   } catch (e: any) {
@@ -37,26 +48,20 @@ async function loadAll() {
   }
 }
 
-async function addHost() {
+function openAddHost() {
+  editingHost.value = null
+  modalOpen.value = true
+}
+
+function openEditHost(host: ManagedHost) {
+  editingHost.value = host
+  modalOpen.value = true
+}
+
+async function onHostSaved() {
+  modalOpen.value = false
   hostMsg.value = ''
-  try {
-    await api.createHost({
-      name: newHost.name,
-      domains: newHost.domains.split(',').map((s) => s.trim()).filter(Boolean),
-      address: newHost.address,
-      port: Number(newHost.port),
-      deploy_plugin: newHost.deploy_plugin,
-      csr_source: newHost.csr_source,
-      config: newHost.config ? JSON.parse(newHost.config) : {},
-    } as any)
-    hosts.value = await api.hosts()
-    newHost.name = ''
-    newHost.domains = ''
-    newHost.address = ''
-    newHost.config = ''
-  } catch (e: any) {
-    hostMsg.value = e.message || String(e)
-  }
+  hosts.value = await api.hosts()
 }
 
 async function renewHost(id: string) {
@@ -115,6 +120,16 @@ function healthBadge(h: TlsHealth | 'loading' | undefined): { text: string; cls:
 function fmtDate(s: string | null | undefined): string {
   if (!s) return '—'
   return new Date(s).toLocaleString()
+}
+
+// Badge for a certificate's stored expiry (as opposed to the live TLS probe above).
+function expiryBadge(cert: CertSummary): { text: string; cls: string } {
+  if (cert.expired) return { text: 'expired', cls: 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300' }
+  const days = cert.days_until_expiry
+  const cls = cert.expiring_soon
+    ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300'
+    : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300'
+  return { text: days != null ? `${days}d left` : 'valid', cls }
 }
 
 onMounted(loadAll)
@@ -177,6 +192,7 @@ onMounted(loadAll)
             <thead class="border-b border-slate-200 text-xs uppercase text-slate-500 dark:border-slate-800 dark:text-slate-400">
               <tr>
                 <th class="px-4 py-3">Domain(s)</th>
+                <th class="px-4 py-3">Device</th>
                 <th class="px-4 py-3">Live health</th>
                 <th class="px-4 py-3">Trusted</th>
                 <th class="px-4 py-3">Expires</th>
@@ -186,7 +202,7 @@ onMounted(loadAll)
             </thead>
             <tbody>
               <tr v-if="certificates.length === 0">
-                <td colspan="6" class="px-4 py-6 text-center text-slate-400">No certificates issued yet.</td>
+                <td colspan="7" class="px-4 py-6 text-center text-slate-400">No certificates issued yet.</td>
               </tr>
               <tr
                 v-for="cert in certificates"
@@ -196,6 +212,16 @@ onMounted(loadAll)
                 <td class="px-4 py-3 font-medium">
                   {{ cert.primary_domain }}
                   <span v-if="cert.domains.length > 1" class="text-xs text-slate-400">+{{ cert.domains.length - 1 }}</span>
+                </td>
+                <td class="px-4 py-3">
+                  <span
+                    v-if="cert.host_name"
+                    class="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
+                    :title="`Pushed to device ${cert.host_name}`"
+                  >
+                    📡 {{ cert.host_name }}
+                  </span>
+                  <span v-else class="text-xs text-slate-400">— ACME client —</span>
                 </td>
                 <td class="px-4 py-3">
                   <span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="healthBadge(health[cert.id]).cls">
@@ -223,7 +249,15 @@ onMounted(loadAll)
 
       <!-- Managed hosts -->
       <section>
-        <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Managed hosts</h2>
+        <div class="mb-3 flex items-center justify-between">
+          <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Managed hosts</h2>
+          <button
+            @click="openAddHost"
+            class="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500"
+          >
+            + Add host
+          </button>
+        </div>
         <p class="mb-3 text-xs text-slate-400">Devices that can't run ACME (ESXi, printers, switches). acme-lan issues the cert and pushes it via a deploy plugin.</p>
         <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
           <table class="w-full text-left text-sm">
@@ -233,21 +267,35 @@ onMounted(loadAll)
                 <th class="px-4 py-3">Domain(s)</th>
                 <th class="px-4 py-3">Target</th>
                 <th class="px-4 py-3">Plugin</th>
+                <th class="px-4 py-3">Latest cert</th>
                 <th class="px-4 py-3">Last status</th>
                 <th class="px-4 py-3"></th>
               </tr>
             </thead>
             <tbody>
               <tr v-if="hosts.length === 0">
-                <td colspan="6" class="px-4 py-6 text-center text-slate-400">No managed hosts yet.</td>
+                <td colspan="7" class="px-4 py-6 text-center text-slate-400">No managed hosts yet.</td>
               </tr>
               <tr v-for="host in hosts" :key="host.id" class="border-b border-slate-100 last:border-0 dark:border-slate-800/60">
                 <td class="px-4 py-3 font-medium">{{ host.name }}</td>
                 <td class="px-4 py-3">{{ host.domains.join(', ') }}</td>
                 <td class="px-4 py-3 text-slate-500 dark:text-slate-400">{{ host.address }}:{{ host.port }}</td>
                 <td class="px-4 py-3"><code class="text-xs">{{ host.deploy_plugin }}</code></td>
+                <td class="px-4 py-3">
+                  <span
+                    v-if="host.latest_certificate"
+                    class="rounded-full px-2 py-0.5 text-xs font-medium"
+                    :class="expiryBadge(host.latest_certificate).cls"
+                    :title="`${host.certificate_count} certificate(s) issued for this device`"
+                  >
+                    {{ expiryBadge(host.latest_certificate).text }}
+                    <span v-if="host.certificate_count > 1" class="opacity-70">· {{ host.certificate_count }}</span>
+                  </span>
+                  <span v-else class="text-xs text-slate-400">none yet</span>
+                </td>
                 <td class="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">{{ host.last_status || '—' }}</td>
                 <td class="px-4 py-3 text-right whitespace-nowrap">
+                  <button @click="openEditHost(host)" class="mr-3 text-xs font-medium text-slate-600 hover:underline dark:text-slate-300">edit</button>
                   <button @click="renewHost(host.id)" class="mr-3 text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400">renew</button>
                   <button @click="removeHost(host.id)" class="text-xs font-medium text-red-600 hover:underline dark:text-red-400">delete</button>
                 </td>
@@ -255,32 +303,7 @@ onMounted(loadAll)
             </tbody>
           </table>
         </div>
-
-        <div class="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
-          <div class="flex flex-wrap items-end gap-3">
-            <label class="text-xs"><span class="mb-1 block text-slate-500 dark:text-slate-400">Name</span>
-              <input v-model="newHost.name" placeholder="esxi01" class="w-32 rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-800" /></label>
-            <label class="text-xs"><span class="mb-1 block text-slate-500 dark:text-slate-400">Domains (comma-sep)</span>
-              <input v-model="newHost.domains" placeholder="esxi01.lan" class="w-48 rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-800" /></label>
-            <label class="text-xs"><span class="mb-1 block text-slate-500 dark:text-slate-400">Address</span>
-              <input v-model="newHost.address" placeholder="192.168.3.5" class="w-36 rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-800" /></label>
-            <label class="text-xs"><span class="mb-1 block text-slate-500 dark:text-slate-400">Plugin</span>
-              <input v-model="newHost.deploy_plugin" class="w-24 rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-800" /></label>
-            <label class="text-xs"><span class="mb-1 block text-slate-500 dark:text-slate-400">CSR source</span>
-              <select v-model="newHost.csr_source" class="w-40 rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-800">
-                <option value="device">device (key stays on device)</option>
-                <option value="local">local (acme-lan holds key)</option>
-              </select></label>
-            <label class="text-xs"><span class="mb-1 block text-slate-500 dark:text-slate-400">Config (JSON)</span>
-              <input v-model="newHost.config" placeholder='{"cert_path":"…","key_path":"…"}' class="w-64 rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-800" /></label>
-            <button @click="addHost" class="rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-500">Add host</button>
-          </div>
-          <div v-if="newHost.csr_source === 'local'" class="mt-2 rounded-md bg-amber-100 px-3 py-2 text-xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-            ⚠ With <b>local</b> CSR source, acme-lan generates and stores the private key. Prefer
-            <b>device</b> so the private key never leaves the device.
-          </div>
-          <div v-if="hostMsg" class="mt-2 text-xs text-slate-500 dark:text-slate-400">{{ hostMsg }}</div>
-        </div>
+        <div v-if="hostMsg" class="mt-2 text-xs text-slate-500 dark:text-slate-400">{{ hostMsg }}</div>
       </section>
 
       <!-- Ad-hoc probe -->
@@ -309,5 +332,14 @@ onMounted(loadAll)
         </div>
       </section>
     </main>
+
+    <HostModal
+      v-if="modalOpen"
+      :host="editingHost"
+      :plugins="deployPlugins"
+      :credentials="credentials"
+      @close="modalOpen = false"
+      @saved="onHostSaved"
+    />
   </div>
 </template>

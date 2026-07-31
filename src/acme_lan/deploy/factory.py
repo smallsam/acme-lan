@@ -21,6 +21,23 @@ def available_plugins() -> list[str]:
     return sorted(_PLUGINS)
 
 
+def plugin_specs() -> list[dict]:
+    """Describe each plugin (name, whether it supports device CSRs, and its config fields)."""
+    from dataclasses import asdict
+
+    specs = []
+    for name in available_plugins():
+        cls = _PLUGINS[name]
+        specs.append(
+            {
+                "name": name,
+                "supports_csr_retrieval": cls.supports_csr_retrieval,
+                "fields": [asdict(f) for f in cls.fields],
+            }
+        )
+    return specs
+
+
 def get_deploy_plugin(name: str) -> DeployPlugin:
     try:
         return _PLUGINS[name]()

@@ -25,4 +25,15 @@ await page.waitForTimeout(2500)
 await page.screenshot({ path: path.join(outDir, 'dashboard.png'), fullPage: true })
 console.log('wrote docs/img/dashboard.png')
 
+// The "add host" modal, with an SSH plugin selected so its schema-driven config fields show.
+await page.getByRole('button', { name: '+ Add host' }).click()
+const modal = page.getByTestId('host-modal')
+await modal.getByTestId('plugin-select').selectOption('ssh')
+await modal.getByPlaceholder('esxi01', { exact: true }).fill('esxi01')
+await modal.getByPlaceholder('esxi01.lan').fill('esxi01.lan')
+await modal.getByPlaceholder('192.168.3.5').fill('192.168.3.5')
+await page.waitForTimeout(300)
+await modal.screenshot({ path: path.join(outDir, 'add-host-modal.png') })
+console.log('wrote docs/img/add-host-modal.png')
+
 await browser.close()

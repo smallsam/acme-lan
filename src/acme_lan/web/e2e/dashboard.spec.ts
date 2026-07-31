@@ -4,8 +4,8 @@ test.describe('dashboard', () => {
   test('renders the header and seeded stats', async ({ page }) => {
     await page.goto('/')
     await expect(page.getByRole('heading', { name: 'acme-lan' })).toBeVisible()
-    // One certificate was seeded.
-    await expect(page.getByTestId('stat-certificates')).toHaveText('1')
+    // Two certificates were seeded (one ACME-client cert, one pushed to a device).
+    await expect(page.getByTestId('stat-certificates')).toHaveText('2')
   })
 
   test('lists the seeded certificate with a live health badge', async ({ page }) => {
