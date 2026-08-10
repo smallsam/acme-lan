@@ -21,6 +21,7 @@ export {
 export { Description, ErrorMessage, Field, FieldGroup, Fieldset, Label, Legend } from './fieldset'
 export { Heading, Subheading } from './heading'
 export { Input } from './input'
+export { Listbox, ListboxDescription, ListboxLabel, ListboxOption } from './listbox'
 export { Navbar, NavbarDivider, NavbarItem, NavbarLabel, NavbarSection, NavbarSpacer } from './navbar'
 export { Notice } from './notice'
 export {

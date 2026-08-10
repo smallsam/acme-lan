@@ -19,6 +19,9 @@ import {
   Code,
   Divider,
   Input,
+  Listbox,
+  ListboxLabel,
+  ListboxOption,
   Navbar,
   NavbarItem,
   NavbarSection,
@@ -244,17 +247,17 @@ onMounted(load)
 
             <div class="space-y-2">
               <div class="flex items-center gap-3">
-                <Select
+                <Listbox
                   v-if="field.type === 'select'"
                   :model-value="String(displayValue(field) ?? '')"
                   :disabled="!field.editable"
                   :data-testid="`field-${field.key}`"
                   @update:model-value="onInput(field, $event)"
                 >
-                  <option v-for="choice in field.choices || []" :key="choice" :value="choice">
-                    {{ choice }}
-                  </option>
-                </Select>
+                  <ListboxOption v-for="choice in field.choices || []" :key="choice" :value="choice">
+                    <ListboxLabel>{{ choice }}</ListboxLabel>
+                  </ListboxOption>
+                </Listbox>
                 <!-- Booleans: the label already says what the switch does, so no
                      redundant Enabled/Disabled text beside it. -->
                 <Checkbox

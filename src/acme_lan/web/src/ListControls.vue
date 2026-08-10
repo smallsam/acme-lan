@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Search / sort / page-size bar shared by the certificate and host lists. Paging buttons
 // live in ListPagination, which sits below the table like Catalyst's pagination does.
-import { Button, Select, Input, Text } from './catalyst'
+import { Button, Input, Listbox, ListboxLabel, ListboxOption, Text } from './catalyst'
 
 const props = defineProps<{
   search: string
@@ -34,15 +34,15 @@ const emit = defineEmits<{
       @update:model-value="emit('update:search', $event); emit('update:offset', 0)"
     />
     <div class="w-48">
-      <Select
+      <Listbox
         :model-value="sort"
         data-testid="list-sort"
         @update:model-value="emit('update:sort', $event)"
       >
-        <option v-for="option in sorts" :key="option.value" :value="option.value">
-          {{ option.label }}
-        </option>
-      </Select>
+        <ListboxOption v-for="option in sorts" :key="option.value" :value="option.value">
+          <ListboxLabel>{{ option.label }}</ListboxLabel>
+        </ListboxOption>
+      </Listbox>
     </div>
     <Button
       outline
@@ -55,16 +55,16 @@ const emit = defineEmits<{
 
     <div class="ml-auto flex items-center gap-3">
       <div class="w-22">
-        <Select
+        <Listbox
           :model-value="limit"
           data-testid="list-limit"
           @update:model-value="emit('update:limit', Number($event)); emit('update:offset', 0)"
         >
-          <option :value="10">10</option>
-          <option :value="25">25</option>
-          <option :value="50">50</option>
-          <option :value="100">100</option>
-        </Select>
+          <ListboxOption :value="10"><ListboxLabel>10</ListboxLabel></ListboxOption>
+          <ListboxOption :value="25"><ListboxLabel>25</ListboxLabel></ListboxOption>
+          <ListboxOption :value="50"><ListboxLabel>50</ListboxLabel></ListboxOption>
+          <ListboxOption :value="100"><ListboxLabel>100</ListboxLabel></ListboxOption>
+        </Listbox>
       </div>
       <Text data-testid="list-range" class="whitespace-nowrap">
         {{ total === 0 ? '0' : `${offset + 1}–${Math.min(offset + limit, total)}` }} of {{ total }}

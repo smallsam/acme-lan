@@ -21,8 +21,10 @@ import {
   Heading,
   Input,
   Label,
+  Listbox,
+  ListboxLabel,
+  ListboxOption,
   Notice,
-  Select,
   Table,
   TableBody,
   TableCell,
@@ -158,18 +160,18 @@ onMounted(load)
           </Field>
           <Field>
             <Label>Kind</Label>
-            <Select v-model="form.kind" data-testid="cred-kind">
-              <option value="password">password</option>
-              <option value="ssh_key">ssh_key</option>
-            </Select>
+            <Listbox v-model="form.kind" data-testid="cred-kind">
+              <ListboxOption value="password"><ListboxLabel>password</ListboxLabel></ListboxOption>
+              <ListboxOption value="ssh_key"><ListboxLabel>ssh_key</ListboxLabel></ListboxOption>
+            </Listbox>
           </Field>
           <Field>
             <Label>Stored in</Label>
-            <Select v-model="form.provider" data-testid="cred-provider">
-              <option value="local">local (encrypted here)</option>
-              <option value="azure_keyvault">azure_keyvault</option>
-              <option value="vault">vault</option>
-            </Select>
+            <Listbox v-model="form.provider" data-testid="cred-provider">
+              <ListboxOption value="local"><ListboxLabel>local (encrypted here)</ListboxLabel></ListboxOption>
+              <ListboxOption value="azure_keyvault"><ListboxLabel>azure_keyvault</ListboxLabel></ListboxOption>
+              <ListboxOption value="vault"><ListboxLabel>vault</ListboxLabel></ListboxOption>
+            </Listbox>
           </Field>
           <Field v-if="form.provider === 'local'" class="sm:col-span-2">
             <Label>{{ form.kind === 'ssh_key' ? 'Private key (PEM)' : 'Password' }}</Label>

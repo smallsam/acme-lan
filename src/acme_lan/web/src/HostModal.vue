@@ -16,8 +16,10 @@ import {
   Input,
   Label,
   Legend,
+  Listbox,
+  ListboxLabel,
+  ListboxOption,
   Notice,
-  Select,
   Text,
   Textarea,
 } from './catalyst'
@@ -155,25 +157,31 @@ async function save() {
           </Field>
           <Field>
             <Label>Deploy plugin</Label>
-            <Select v-model="form.deploy_plugin" data-testid="plugin-select">
-              <option v-for="p in plugins" :key="p.name" :value="p.name">{{ p.name }}</option>
-            </Select>
+            <Listbox v-model="form.deploy_plugin" data-testid="plugin-select">
+              <ListboxOption v-for="p in plugins" :key="p.name" :value="p.name">
+                <ListboxLabel>{{ p.name }}</ListboxLabel>
+              </ListboxOption>
+            </Listbox>
           </Field>
           <Field>
             <Label>CSR source</Label>
-            <Select v-model="form.csr_source" data-testid="csr-source-select">
-              <option value="device" :disabled="!supportsDevice">device (key stays on device)</option>
-              <option value="local">local (acme-lan holds key)</option>
-            </Select>
+            <Listbox v-model="form.csr_source" data-testid="csr-source-select">
+              <ListboxOption value="device" :disabled="!supportsDevice">
+                <ListboxLabel>device (key stays on device)</ListboxLabel>
+              </ListboxOption>
+              <ListboxOption value="local">
+                <ListboxLabel>local (acme-lan holds key)</ListboxLabel>
+              </ListboxOption>
+            </Listbox>
           </Field>
           <Field>
             <Label>Credential (optional)</Label>
-            <Select v-model="form.credential_id" data-testid="credential-select">
-              <option value="">— none —</option>
-              <option v-for="c in credentials" :key="c.id" :value="c.id">
-                {{ c.name }} ({{ c.username }})
-              </option>
-            </Select>
+            <Listbox v-model="form.credential_id" data-testid="credential-select">
+              <ListboxOption value=""><ListboxLabel>— none —</ListboxLabel></ListboxOption>
+              <ListboxOption v-for="c in credentials" :key="c.id" :value="c.id">
+                <ListboxLabel>{{ c.name }} ({{ c.username }})</ListboxLabel>
+              </ListboxOption>
+            </Listbox>
           </Field>
         </div>
 
