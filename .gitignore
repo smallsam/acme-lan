@@ -15,6 +15,10 @@ __pycache__/
 # Local config / secrets
 .env
 
+# Tailwind Catalyst UI kit — a licensed download kept locally as a styling reference.
+# Not ours to redistribute, so it must never be committed.
+/catalyst-ui-kit/
+
 # uv
 .uv/
 

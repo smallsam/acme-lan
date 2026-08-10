@@ -4,6 +4,9 @@ import { fileURLToPath } from 'node:url'
 import { defineConfig, devices } from '@playwright/test'
 
 const PORT = 8123
+// Overridable so the suite can run from a container against a server on the host
+// (e.g. ACME_LAN_UI_HOST=host.docker.internal with an already-running ui_server.py).
+const HOST = process.env.ACME_LAN_UI_HOST || '127.0.0.1'
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(dirname, '../../..')
 
@@ -19,7 +22,7 @@ export default defineConfig({
   workers: 1,
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
   use: {
-    baseURL: `http://127.0.0.1:${PORT}`,
+    baseURL: `http://${HOST}:${PORT}`,
     trace: 'on-first-retry',
   },
   projects: [
@@ -38,7 +41,7 @@ export default defineConfig({
   webServer: {
     command: 'uv run python tests/ui_server.py',
     cwd: repoRoot,
-    url: `http://127.0.0.1:${PORT}/healthz`,
+    url: `http://${HOST}:${PORT}/healthz`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     env: { ACME_LAN_UI_PORT: String(PORT) },

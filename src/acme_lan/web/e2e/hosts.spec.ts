@@ -1,14 +1,20 @@
-import { expect, test } from '@playwright/test'
+import { expect, type Page, test } from '@playwright/test'
+
+// Managed hosts live behind their own tab in the dashboard shell.
+async function openHosts(page: Page) {
+  await page.goto('/')
+  await page.getByTestId('tab-hosts').click()
+  await expect(page.getByRole('heading', { name: 'Managed hosts' })).toBeVisible()
+}
 
 test.describe('managed hosts', () => {
   test('shows the seeded host', async ({ page }) => {
-    await page.goto('/')
-    await expect(page.getByRole('heading', { name: 'Managed hosts' })).toBeVisible()
+    await openHosts(page)
     await expect(page.getByRole('cell', { name: 'printer01', exact: true })).toBeVisible()
   })
 
   test('warns when choosing the local CSR source in the modal', async ({ page }) => {
-    await page.goto('/')
+    await openHosts(page)
     await page.getByRole('button', { name: '+ Add host' }).click()
     const modal = page.getByTestId('host-modal')
     await expect(modal).toBeVisible()
@@ -21,7 +27,7 @@ test.describe('managed hosts', () => {
   })
 
   test('renders plugin-specific config fields that change with plugin/mode', async ({ page }) => {
-    await page.goto('/')
+    await openHosts(page)
     await page.getByRole('button', { name: '+ Add host' }).click()
     const modal = page.getByTestId('host-modal')
 
@@ -40,7 +46,7 @@ test.describe('managed hosts', () => {
   })
 
   test('can add, edit and delete a host via the modal', async ({ page }) => {
-    await page.goto('/')
+    await openHosts(page)
 
     // Add.
     await page.getByRole('button', { name: '+ Add host' }).click()
@@ -57,8 +63,9 @@ test.describe('managed hosts', () => {
     const row = page.locator('tr', { hasText: 'esxi-e2e' })
     await expect(row).toBeVisible()
 
-    // Edit: modal pre-fills the existing values.
-    await row.getByRole('button', { name: 'edit' }).click()
+    // Edit (via the row's options dropdown): modal pre-fills the existing values.
+    await row.getByRole('button', { name: 'More options' }).click()
+    await page.getByRole('menuitem', { name: 'Edit' }).click()
     const editModal = page.getByTestId('host-modal')
     await expect(editModal.getByRole('heading', { name: 'Edit host' })).toBeVisible()
     await expect(editModal.getByPlaceholder('192.168.3.5')).toHaveValue('192.168.3.50')
@@ -67,7 +74,8 @@ test.describe('managed hosts', () => {
     await expect(page.getByRole('cell', { name: '192.168.3.51:443' })).toBeVisible()
 
     // Delete.
-    await page.locator('tr', { hasText: 'esxi-e2e' }).getByRole('button', { name: 'delete' }).click()
+    await page.locator('tr', { hasText: 'esxi-e2e' }).getByRole('button', { name: 'More options' }).click()
+    await page.getByRole('menuitem', { name: 'Delete' }).click()
     await expect(page.getByText('esxi-e2e', { exact: true })).toHaveCount(0)
   })
 })
