@@ -86,8 +86,8 @@ services:
       ACME_LAN_UPSTREAM_ACCOUNT_EMAIL: "you@example.net"
       ACME_LAN_DNS_PROVIDER: "cloudflare"
       ACME_LAN_CLOUDFLARE_API_TOKEN: "${CLOUDFLARE_API_TOKEN}"
-      # Serve acme-lan itself over trusted HTTPS (section 6):
-      ACME_LAN_SERVICE_DOMAIN: "acme-lan.example.net"
+      # Serve acme-lan itself over trusted HTTPS (section 6); the certificate domain
+      # defaults to the hostname of ACME_LAN_EXTERNAL_URL:
       ACME_LAN_SELF_CERT_ENABLED: "true"
       # Renew managed-host certs automatically (section 8):
       ACME_LAN_AUTO_RENEW_ENABLED: "true"
@@ -111,9 +111,28 @@ docker compose logs -f          # watch startup + migrations
 
 ## 4. Configuration reference
 
-Every setting is an environment variable with the `ACME_LAN_` prefix (or a line in an
-`.env` file). [`.env.example`](../.env.example) is the annotated source of truth; the most
-important ones:
+Every setting can be changed in **two** places, and it matters which:
+
+| Layer | Where | Wins? |
+| --- | --- | --- |
+| Environment (`ACME_LAN_*`, or an `.env` file) | `docker run -e …`, Compose `environment:` | **Yes** — highest priority |
+| Dashboard → **Settings** | YAML file at `ACME_LAN_CONFIG_FILE` (default `/app/data/config.yml`) | Only where no env var is set |
+| Built-in defaults | the code | Fallback |
+
+**Every** option appears on the Settings screen, grouped by area, with a badge showing where
+its value comes from. An option supplied by the environment is shown **read-only** and
+labelled *set by environment*: the dashboard writes a file, and a file cannot override a
+process's environment, so it tells you to change it where the environment is defined rather
+than silently accepting an edit that would have no effect. Attempting it through the API
+returns `409`.
+
+Secrets (tokens, passwords, the Fernet key, the OIDC client secret) are **never** sent to
+the browser — the screen shows only whether one is set, and typing a new value replaces it.
+The YAML file is written `0600` because it can hold those values.
+
+Anything editable that you've saved can be reverted to its default with **reset**, which
+removes the key from the file. [`.env.example`](../.env.example) remains the annotated
+reference for the environment names; the most important ones:
 
 ### Core
 
@@ -140,7 +159,7 @@ important ones:
 | `ACME_LAN_DNS_PROVIDER` | `cloudflare` | `cloudflare` \| `acmedns`. |
 | `ACME_LAN_CLOUDFLARE_API_TOKEN` | *(empty)* | Token scoped to `Zone.DNS:Edit` for your zone(s). |
 | `ACME_LAN_ACMEDNS_API_URL` / `_USERNAME` / `_PASSWORD` / `_SUBDOMAIN` | *(empty)* | acme-dns delegation. |
-| `ACME_LAN_DNS_PROPAGATION_SECONDS` | `0` | Delay after publishing TXT before answering the challenge. |
+| `ACME_LAN_DNS_PROPAGATION_SECONDS` | `20` | Delay after publishing TXT before answering the challenge. |
 
 ### Storage backends, self-TLS, renewal, notifications
 
@@ -149,6 +168,34 @@ See [section 6](#6-serving-acme-lan-over-trusted-https), [section 8](#8-managed-
 [`.env.example`](../.env.example) (`ACME_LAN_CERT_STORE_BACKEND`, `ACME_LAN_AZURE_KEYVAULT_URL`,
 `ACME_LAN_VAULT_*`, `ACME_LAN_AUTO_RENEW_ENABLED`, `ACME_LAN_RENEW_BEFORE_DAYS`,
 `ACME_LAN_EXPIRY_WARN_DAYS`, `ACME_LAN_POSTMARK_*`, `ACME_LAN_NOTIFY_*`).
+
+### Signing in (local accounts and single sign-on)
+
+Out of the box the dashboard is **open** — the trusted-LAN / reverse-proxy-auth posture it
+has always had. To require a login, add an account under **Users**, then turn on
+**Require login** (Settings → Authentication). Enabling it before any account exists is safe:
+the login screen then offers to create the first administrator, so you cannot lock yourself
+out. The ACME protocol endpoints are never gated — clients authenticate with their own
+account keys per RFC 8555 — and `ACME_LAN_ADMIN_TOKEN` keeps working for scripts.
+
+Sessions are rows in the database behind an HTTP-only cookie, so disabling a user or changing
+their password signs them out immediately. Passwords are stored as PBKDF2-HMAC-SHA256.
+
+**Microsoft Entra ID** takes three steps (Settings → Authentication walks through them):
+
+1. Register an application in Entra and add the redirect URI the screen shows you —
+   `<your external URL>/api/auth/oidc/callback`.
+2. Set *OIDC provider* to `entra` and paste the **directory (tenant) ID**, the client ID and
+   a client secret. Everything else (authority, discovery, endpoints) is derived from the
+   tenant ID.
+3. Tick *Enable OIDC login*, save, and press **Test connection** to confirm discovery
+   resolves before you rely on it.
+
+Any other OpenID Connect provider works with provider `generic` and a discovery
+(`.well-known/openid-configuration`) URL. The flow is authorization-code with PKCE. By
+default a local user record is created on first successful sign-in; restrict who may sign in
+with *Allowed email addresses*, or turn off *Create users on first OIDC login* to accept only
+people you've already added.
 
 ## 5. Choosing how control is proven upstream
 
@@ -181,15 +228,19 @@ options:
 ### A. Let acme-lan certify itself (built-in)
 
 ```env
-ACME_LAN_SERVICE_DOMAIN=acme-lan.example.net
 ACME_LAN_SELF_CERT_ENABLED=true
 ACME_LAN_SECRET_KEY=<required>
+# Optional: defaults to the hostname of ACME_LAN_EXTERNAL_URL
+#ACME_LAN_SERVICE_DOMAIN=acme-lan.example.net
 ```
 
 On startup acme-lan obtains a cert for `service_domain` via the default upstream, serves
-HTTPS with it, and renews it in the background. Set `ACME_LAN_EXTERNAL_URL` to the `https://`
-URL and expose the same port. The private key is stored **encrypted** and only materialized
-into memory (never a plaintext file) — see [SECURITY.md](SECURITY.md).
+HTTPS with it on `ACME_LAN_TLS_PORT` (default `8443`, expose it alongside the HTTP port),
+and renews it in the background. Plain HTTP keeps working on the main port; its dashboard
+shows a banner linking to the HTTPS URL. Set `ACME_LAN_EXTERNAL_URL` to the `https://` URL
+(e.g. `https://acme-lan.example.net:8443`) so directory URLs point clients at TLS. The
+private key is stored **encrypted** and only materialized into memory (never a plaintext
+file) — see [SECURITY.md](SECURITY.md).
 
 > Requires `ACME_LAN_SECRET_KEY`; without it acme-lan refuses (rather than writing a
 > plaintext key) and stays on HTTP.

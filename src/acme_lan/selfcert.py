@@ -50,7 +50,10 @@ def _default_issuer(csr_pem: str) -> str:
 async def ensure_service_certificate(*, issuer: Issuer | None = None, force: bool = False) -> bool:
     """Ensure a current service certificate exists. Returns True if (re)issued."""
     settings = get_settings()
-    if not settings.service_domain:
+    domain = settings.service_domain
+    if not domain or "." not in domain:
+        # service_domain defaults to the external_url hostname; a dot-less name like
+        # "localhost" is nothing an upstream CA can issue for — treat as unconfigured.
         return False
     if not settings.secret_key:
         logger.error(
@@ -62,7 +65,6 @@ async def ensure_service_certificate(*, issuer: Issuer | None = None, force: boo
         return False
 
     issuer = issuer or _default_issuer
-    domain = settings.service_domain
 
     def _issue() -> tuple[str, str]:
         csr_pem, key_pem = build_host_csr([domain])

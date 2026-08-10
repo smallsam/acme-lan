@@ -126,6 +126,58 @@ register_plugin(MyPlugin)          # keyed by MyPlugin.name
 | --- | --- | --- |
 | [`local`](../src/acme_lan/deploy/local.py) | device, local | `cert_path`, `key_path` (local mode), `reload_command`, `csr_path` (device mode) |
 | [`ssh`](../src/acme_lan/deploy/ssh.py) | device, local | `remote_cert_path`, `remote_key_path` (local mode), `remote_csr_path` **or** `csr_command` (device mode), `reload_command`, `port` |
+| [`cisco_ios`](../src/acme_lan/deploy/cisco_ios.py) | device, local | `trustpoint`, `key_label`, `key_bits`, `hash_algorithm`, `apply_to_https`, `write_memory`, `legacy_ssh`, `port` |
+
+### `cisco_ios` — Catalyst / ISR / IOS-XE
+
+IOS takes certificates through interactive `crypto pki` commands, not a file copy, so this
+plugin drives the CLI. In **device** mode the switch generates the keypair and CSR
+(`crypto pki enroll`) and only the signed certificate is pushed back — the private key
+never leaves the device. In **local** mode acme-lan builds a PKCS#12 and imports it with
+`crypto pki import ... pkcs12 terminal`.
+
+> **Which mode for a public CA?** Use **`local`**. IOS anchors a trustpoint on a
+> *self-signed* CA certificate, and public chains frequently ship none — Let's Encrypt's
+> chain ends at a cross-signed root — so `crypto pki authenticate` rejects the intermediate
+> with `% Error in saving certificate: status = FAIL` and the device certificate can never
+> be imported. A PKCS#12 sidesteps this: it carries key, certificate *and* chain in one
+> blob and needs no prior CA authentication (IOS just notes "The CA cert is not
+> self-signed" and asks whether to create trustpoints for the CAs above — the plugin
+> answers yes, so the device serves a full chain). Device mode remains the better choice
+> for an internal CA whose self-signed root you can authenticate, and the plugin returns an
+> explicit explanation if you hit the anchoring limit.
+
+```json
+{
+  "trustpoint": "ACMELAN",
+  "key_bits": 2048,
+  "hash_algorithm": "sha256",
+  "legacy_ssh": true,
+  "apply_to_https": true,
+  "write_memory": false
+}
+```
+
+Things worth knowing:
+
+- **Two IOS defaults break public CAs, and the plugin overrides both.** IOS signs the CSR
+  with **SHA-1** (`hash sha256` fixes it) and emits a **CN-only CSR with no SAN**
+  (`subject-alt-name` fixes it). Let's Encrypt rejects either. Support for *several* names
+  on one `subject-alt-name` line is IOS-version dependent.
+- **`write_memory` is off by default.** Certificate and `ip http` changes stay in the
+  running config and are lost on reload until you enable it. IOS still writes generated RSA
+  keys to its private-config regardless.
+- **`legacy_ssh` for older gear.** paramiko 5 removed `ssh-rsa` and the SHA-1 key exchanges
+  outright, so switches that offer nothing else are unreachable with it. With `legacy_ssh`
+  the plugin shells out to the system `ssh` client (in the image for this reason) and
+  re-enables `diffie-hellman-group14-sha1`, `diffie-hellman-group-exchange-sha1`,
+  `diffie-hellman-group1-sha1`, `ssh-rsa` and `aes256-cbc` for that connection only. Use
+  `ssh_options` for anything else a specific box needs.
+- **The login account needs privilege 15** (or an enable password matching the credential),
+  since `crypto pki` is privileged/config mode.
+- IOS authenticates **one CA per trustpoint**, so the plugin feeds it the leaf's direct
+  issuer from the chain. Deployments that need full root chain validation want a second
+  trustpoint with `chain-validation`.
 
 Example host config for the built-in `ssh` plugin in **device** mode (key stays on the box):
 

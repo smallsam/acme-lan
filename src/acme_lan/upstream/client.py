@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import josepy
 from acme import client, messages
+from acme import errors as acme_errors
 
 from ..config import Settings
 from ..keystore import load_or_create_account_key
@@ -50,6 +51,13 @@ def build_client(
             hmac_key=eab_hmac_key,
             directory=directory,
         )
-    regr = acme_client.new_account(messages.NewRegistration.from_data(**kwargs))
+    try:
+        regr = acme_client.new_account(messages.NewRegistration.from_data(**kwargs))
+    except acme_errors.ConflictError as exc:
+        # The key is already registered upstream (e.g. by an earlier attempt or a previous
+        # run); fetch that account instead of failing.
+        regr = acme_client.query_registration(
+            messages.RegistrationResource(body=messages.Registration(), uri=exc.location)
+        )
     net.account = regr
     return acme_client, account_key

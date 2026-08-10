@@ -14,13 +14,17 @@ from .acme import accounts, authz, certificates, directory, orders
 from .acme.errors import AcmeError, acme_error_handler
 from .config import get_settings
 from .db import init_db
-from .management import acme_profiles_api, hosts_api
+from .management import acme_profiles_api, auth_api, hosts_api, settings_api
 from .management import api as management_api
 from .notifications import get_channels, run_notifier
 from .scheduler import run_scheduler
 from .selfcert import run_self_cert_maintainer
 
 FRONTEND_DIST = Path(__file__).resolve().parent / "web" / "dist"
+
+# Filled in by the ``acme-lan`` entrypoint when the HTTPS listener is up; the dashboard
+# uses it to steer plain-HTTP visitors to the trusted URL.
+runtime_state: dict[str, object] = {"tls_active": False, "https_url": None}
 
 
 @asynccontextmanager
@@ -61,10 +65,16 @@ def create_app() -> FastAPI:
     app.include_router(management_api.router)
     app.include_router(hosts_api.router)
     app.include_router(acme_profiles_api.router)
+    app.include_router(auth_api.router)
+    app.include_router(settings_api.router)
 
     @app.get("/healthz", include_in_schema=False)
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/api/server-info", include_in_schema=False)
+    async def server_info() -> dict[str, object]:
+        return dict(runtime_state)
 
     # Serve the built Vue dashboard if present (see src/acme_lan/web). Mounted last so
     # it only catches paths not handled by the ACME / management routers.

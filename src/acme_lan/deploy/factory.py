@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from .base import DeployPlugin
+from .cisco_ios import CiscoIosDeployPlugin
 from .local import LocalDeployPlugin
 from .ssh import SshDeployPlugin
 
 _PLUGINS: dict[str, type[DeployPlugin]] = {
+    CiscoIosDeployPlugin.name: CiscoIosDeployPlugin,
     LocalDeployPlugin.name: LocalDeployPlugin,
     SshDeployPlugin.name: SshDeployPlugin,
 }

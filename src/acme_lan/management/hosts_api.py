@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -107,10 +107,51 @@ async def deploy_plugins() -> list[dict[str, Any]]:
     return plugin_specs()
 
 
+HOST_SORTS = {
+    "name": lambda h: (h["name"] or "").lower(),
+    "address": lambda h: (h["address"] or "").lower(),
+    "deploy_plugin": lambda h: (h["deploy_plugin"] or "").lower(),
+    "last_deployed_at": lambda h: h["last_deployed_at"] or "",
+    "expires": lambda h: (h["latest_certificate"] or {}).get("not_after") or "",
+}
+
+
 @router.get("/hosts")
-async def list_hosts(session: AsyncSession = Depends(get_session)) -> list[dict[str, Any]]:
+async def list_hosts(
+    search: str = "",
+    sort: str = "name",
+    order: str = "asc",
+    limit: int = Query(default=25, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
     hosts = (await session.execute(select(ManagedHost))).scalars().all()
-    return [await _host_view(h, session) for h in hosts]
+    views = [await _host_view(h, session) for h in hosts]
+
+    if search:
+        needle = search.strip().lower()
+        views = [
+            v
+            for v in views
+            if needle in " ".join(
+                str(part).lower()
+                for part in (
+                    v["name"] or "",
+                    v["address"] or "",
+                    v["deploy_plugin"] or "",
+                    v["last_status"] or "",
+                    *(v["domains"] or []),
+                )
+            )
+        ]
+    key = HOST_SORTS.get(sort, HOST_SORTS["name"])
+    views.sort(key=key, reverse=order == "desc")
+    return {
+        "items": views[offset : offset + limit],
+        "total": len(views),
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 @router.post("/hosts", status_code=201)

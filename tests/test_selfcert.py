@@ -66,11 +66,25 @@ async def test_ensure_service_certificate(fresh_db, tmp_path):
 
 
 async def test_no_service_domain_is_noop(fresh_db, tmp_path):
+    # Unset, service_domain derives from external_url (localhost under fresh_db) — a
+    # dot-less name is not something an upstream CA can issue for, so this is a noop.
     os.environ.pop("ACME_LAN_SERVICE_DOMAIN", None)
     from acme_lan import config
 
     config.reset_settings_cache()
     assert await ensure_service_certificate(issuer=lambda csr: _chain("x")) is False
+
+
+async def test_service_domain_derived_from_external_url(fresh_db, tmp_path):
+    os.environ.pop("ACME_LAN_SERVICE_DOMAIN", None)
+    os.environ["ACME_LAN_EXTERNAL_URL"] = "https://svc.lan.test:8443"
+    os.environ["ACME_LAN_SELF_CERT_PATH"] = str(tmp_path / "svc.pem")
+    from acme_lan import config
+
+    config.reset_settings_cache()
+    assert config.get_settings().service_domain == "svc.lan.test"
+    assert await ensure_service_certificate(issuer=lambda csr: _chain("svc.lan.test")) is True
+    assert (tmp_path / "svc.pem").exists()
 
 
 async def test_self_cert_requires_secret_key(fresh_db, tmp_path):

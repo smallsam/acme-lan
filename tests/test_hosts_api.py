@@ -30,7 +30,8 @@ async def test_host_crud(fresh_db):
         host_id = host["id"]
 
         listed = (await client.get("/api/hosts")).json()
-        assert any(h["id"] == host_id for h in listed)
+        assert listed["total"] == 1
+        assert any(h["id"] == host_id for h in listed["items"])
 
         patched = await client.patch(f"/api/hosts/{host_id}", json={"enabled": False})
         assert patched.json()["enabled"] is False
@@ -110,6 +111,6 @@ async def test_host_certificate_linkage(fresh_db):
         assert len(host_certs) == 1
 
         # certificate -> its device host (reverse link)
-        certs = (await client.get("/api/certificates")).json()
+        certs = (await client.get("/api/certificates")).json()["items"]
         cert = next(c for c in certs if c["host_id"] == host_id)
         assert cert["host_name"] == "esxi01"

@@ -62,18 +62,48 @@ def main() -> None:
         port = int(settings.external_url.rsplit(":", 1)[1].split("/")[0])
 
     tls = _bootstrap_service_cert()
-    ssl_certfile, ssl_keyfile = tls if tls else (None, None)
-    if tls:
-        logger.info("Serving HTTPS with the acme-lan service certificate")
+    if not tls:
+        uvicorn.run("acme_lan.main:app", host=host, port=port, reload=False)
+        return
 
-    uvicorn.run(
-        "acme_lan.main:app",
-        host=host,
-        port=port,
-        reload=False,
-        ssl_certfile=ssl_certfile,
-        ssl_keyfile=ssl_keyfile,
+    ssl_certfile, ssl_keyfile = tls
+    from . import main as app_module
+
+    https_url = f"https://{settings.service_domain}:{settings.tls_port}"
+    app_module.runtime_state.update(tls_active=True, https_url=https_url)
+    logger.info(
+        "Serving HTTPS on port %s (%s) alongside HTTP on port %s",
+        settings.tls_port,
+        https_url,
+        port,
     )
+    https_server = uvicorn.Server(
+        uvicorn.Config(
+            "acme_lan.main:app",
+            host=host,
+            port=settings.tls_port,
+            ssl_certfile=ssl_certfile,
+            ssl_keyfile=ssl_keyfile,
+        )
+    )
+    # Same app on plain HTTP; lifespan (init + background tasks) must run exactly once,
+    # so only the HTTPS server drives it.
+    http_server = uvicorn.Server(
+        uvicorn.Config("acme_lan.main:app", host=host, port=port, lifespan="off")
+    )
+
+    async def _serve_both() -> None:
+        tasks = [
+            asyncio.create_task(https_server.serve()),
+            asyncio.create_task(http_server.serve()),
+        ]
+        # If either listener stops (signal or crash), shut the other down too.
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        https_server.should_exit = True
+        http_server.should_exit = True
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    asyncio.run(_serve_both())
 
 
 if __name__ == "__main__":

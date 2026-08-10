@@ -57,7 +57,14 @@ isolated, can't run ACME, or you want one place to manage and monitor every LAN 
 
 The built-in dashboard lists every issued certificate with a **realtime TLS health** badge
 (a raw-TLS probe — works for LDAPS/SMTPS/etc., not just HTTPS), manages device-push hosts,
-and can probe any `host:port` on demand.
+and can probe any `host:port` on demand. Certificate and host lists have search, sorting and
+paging, and renewed-away certificates are folded out of the default view.
+
+It is also where you configure the server: **every** setting is on the Settings screen and
+saved to a YAML file, with options that come from an environment variable shown read-only
+and labelled as enforced. Device credentials, the Key Vault / Vault storage backends, users
+and single sign-on (local passwords or OIDC, with a guided Microsoft Entra ID flow) are all
+managed there — see the [deployment guide](docs/DEPLOYMENT.md#4-configuration-reference).
 
 ![acme-lan dashboard](docs/img/dashboard.png)
 

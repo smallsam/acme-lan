@@ -151,7 +151,7 @@ Logs go to stdout (`docker compose logs -f acme-lan`). Common issues:
 | Rate-limit / "too many certificates" from the CA | You're on production LE; test against **staging** first (`ACME_LAN_UPSTREAM_DIRECTORY_URL`). |
 | Upstream DNS-01 fails | DNS token lacks `Zone.DNS:Edit`, wrong zone, or slow propagation — raise `ACME_LAN_DNS_PROPAGATION_SECONDS`. |
 | Downstream HTTP-01 fails | acme-lan can't reach `http://<name>/.well-known/...`; the LAN name must resolve to the client and be reachable on port 80. |
-| Self-TLS didn't start (stays HTTP) | `ACME_LAN_SELF_CERT_ENABLED=true` needs `ACME_LAN_SECRET_KEY` and a resolvable `ACME_LAN_SERVICE_DOMAIN`; check logs. |
+| Self-TLS didn't start (stays HTTP) | `ACME_LAN_SELF_CERT_ENABLED=true` needs `ACME_LAN_SECRET_KEY` and a resolvable service domain (`ACME_LAN_SERVICE_DOMAIN`, defaulting to the `ACME_LAN_EXTERNAL_URL` hostname); check logs. |
 | "wrote the service key to a 0600 temp file" warning | Running where `memfd_create` is unavailable (non-Linux); functionally fine, see [SECURITY.md](SECURITY.md). |
 | `verify_ssl`/TLS errors against upstream | Only set `ACME_LAN_UPSTREAM_VERIFY_SSL=false` for test CAs (Pebble), never production. |
 | Migration failed on startup | Check the log; restore the pre-upgrade backup and pin the previous image if needed. |
