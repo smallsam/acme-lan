@@ -27,3 +27,6 @@ src/acme_lan/web/test-results/
 src/acme_lan/web/playwright-report/
 src/acme_lan/web/blob-report/
 src/acme_lan/web/.playwright/
+
+# Talk deck build
+talks/**/node_modules/
