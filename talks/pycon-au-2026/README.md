@@ -33,6 +33,8 @@ The probe result is a real handshake against a throwaway local TLS endpoint.
 
 ## Colours
 
-PyCon AU / Python palette: deep navy `071A2F`, Python blue `4B8BBE`, Python yellow
-`FFD43B` as the accent, with `3DDC97` / `FF7A7A` for good and bad news. Swap the constants
-at the top of `build_deck.mjs` if the 2026 brand kit says otherwise.
+The PyCon AU 2026 palette: violet `4B18E8` dominant, on a light grey ground `EAEAEA`, with
+lavender `B18CFA`, lime `C2F166`, coral `EF5539` and jade (darkened to `1F8A4F` so it stays
+readable on light) as the accent family. Title, the two statement slides and the close are
+solid violet; content slides sit on the grey ground. The constants are at the top of
+`build_deck.mjs`.
