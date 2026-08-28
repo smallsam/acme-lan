@@ -11,7 +11,7 @@ from ..db import get_session
 from ..models import Account
 from .common import acme_json_response, read_verified
 from .encoding import Urls, b64url_encode, profile_from_request
-from .errors import account_does_not_exist, malformed
+from .errors import account_does_not_exist, malformed, unauthorized
 from .serializers import account_to_json
 
 router = APIRouter()
@@ -68,9 +68,14 @@ async def account_detail(
     account_id: str, request: Request, session: AsyncSession = Depends(get_session)
 ) -> Response:
     verified = await read_verified(request, session)
-    account = await session.get(Account, account_id)
-    if account is None:
-        raise account_does_not_exist()
+    # RFC 8555 §7.3.2: an account resource may only be read or modified by its own key.
+    # Without this check any registered key could read, rewrite the contact list of, or
+    # deactivate any other account simply by naming its id in the URL.
+    if verified.account is None:
+        raise unauthorized("Request must be signed with an account key identifier (kid)")
+    if verified.account.id != account_id:
+        raise unauthorized("Account key does not match the requested account")
+    account = verified.account
 
     urls = Urls(profile=profile_from_request(request))
     # POST-as-GET returns the account; a payload may update contact info.

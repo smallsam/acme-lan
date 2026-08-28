@@ -38,3 +38,29 @@ Python's `ssl` module loads keys from file paths, so the self-service key is dec
 a Linux `memfd` (anonymous, RAM-backed) and uvicorn is pointed at `/proc/self/fd/<n>` — the
 plaintext never touches persistent storage. On platforms without `memfd_create`, acme-lan
 falls back to a `0600` temporary file and logs a warning.
+
+## Trust model and known limitations
+
+acme-lan is designed for a **single-tenant, trusted LAN**. Before exposing it more
+widely, be aware of the following deliberate trade-offs.
+
+**The management API is unauthenticated by default.** `ACME_LAN_ADMIN_TOKEN` is empty
+unless you set it, and the dashboard, the managed-host configuration and
+`GET /api/certificates/{id}/key` (which returns a stored private key) are all reachable
+by anyone who can talk to the port. A managed host's `reload_command` runs on the target
+device, so write access to the API is equivalent to command execution on every device
+acme-lan can deploy to. Set the token, or put the service behind a reverse proxy that
+authenticates, on any network you do not fully control.
+
+**SSH deploys trust the device's host key on first use.** The `ssh` plugin uses
+paramiko's `AutoAddPolicy`, so it accepts whatever host key the device presents rather
+than pinning a known one. On a network where an attacker can spoof the device address
+or answer on its port, that means the device's stored credential — and, in local-key
+mode, the certificate's private key — would be sent to the impostor. This is
+acceptable on a switched home LAN and is not a safe default on a shared or hostile one.
+
+**ACME endpoints are open by design.** Any client that can reach the server can register
+an account and request certificates for any identifier it can prove control of, exactly
+as with a public CA. Control is proved for real (http-01 or tls-alpn-01), but the set of
+identifiers that acme-lan will forward upstream is bounded only by your DNS provider
+credentials — so treat reachability of the ACME port as the security boundary.

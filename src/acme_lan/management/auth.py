@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hmac
+
 from fastapi import Header, HTTPException
 
 from ..config import get_settings
@@ -17,5 +19,6 @@ async def require_admin(authorization: str | None = Header(default=None)) -> Non
     if not token:
         return
     expected = f"Bearer {token}"
-    if authorization != expected:
+    # Constant-time: a plain != leaks the token prefix through response timing.
+    if not hmac.compare_digest(authorization or "", expected):
         raise HTTPException(status_code=401, detail="Invalid or missing admin token")

@@ -139,6 +139,9 @@ async def verify_jws(
         account = await session.get(Account, account_id)
         if account is None:
             raise unauthorized("Unknown account key identifier")
+        # RFC 8555 §7.3.6: a deactivated account may not perform further operations.
+        if account.status != "valid":
+            raise unauthorized(f"Account is {account.status}")
         jwk_dict = account.jwk
 
     try:
