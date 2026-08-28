@@ -120,6 +120,68 @@ class Certificate(SQLModel, table=True):
     expiry_warned_at: datetime | None = None
 
 
+class User(SQLModel, table=True):
+    """A dashboard user: either local (password hash set) or created by an OIDC login."""
+
+    __tablename__ = "app_user"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    username: str = Field(index=True)
+    email: str = ""
+    # PBKDF2-HMAC-SHA256, stored as "pbkdf2_sha256$<iterations>$<salt_b64>$<hash_b64>".
+    # Empty for users that can only sign in through OIDC.
+    password_hash: str = ""
+    # "local" or "oidc" — where this account came from.
+    provider: str = "local"
+    # OIDC subject claim, so a renamed account still maps to the same person.
+    oidc_subject: str | None = Field(default=None, index=True)
+    is_admin: bool = True
+    disabled: bool = False
+    last_login_at: datetime | None = None
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class UserSession(SQLModel, table=True):
+    """A logged-in session. Server-side so sessions can be revoked by deleting the row."""
+
+    __tablename__ = "user_session"
+
+    # Random opaque token; only its holder can present it (stored as-is, it is not a
+    # password and is generated with 256 bits of entropy).
+    token: str = Field(primary_key=True)
+    user_id: str = Field(foreign_key="app_user.id", index=True)
+    expires_at: datetime = Field(default_factory=utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class OidcState(SQLModel, table=True):
+    """Short-lived CSRF/PKCE state for an in-flight OIDC authorization code exchange."""
+
+    __tablename__ = "oidc_state"
+
+    state: str = Field(primary_key=True)
+    nonce: str = ""
+    code_verifier: str = ""
+    redirect_uri: str = ""
+    next_url: str = ""
+    expires_at: datetime = Field(default_factory=utcnow)
+
+
+class HealthCheckPort(SQLModel, table=True):
+    """Per-hostname TLS health-check port override.
+
+    Issued certs don't say which port the service runs on, so the dashboard probe
+    defaults to ``health_default_port``. This override is keyed by hostname (not
+    certificate id) so it survives renewals, which create new certificate rows.
+    """
+
+    __tablename__ = "health_check_port"
+
+    domain: str = Field(primary_key=True)
+    port: int = 443
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
 class StoredCredential(SQLModel, table=True):
     __tablename__ = "stored_credential"
 

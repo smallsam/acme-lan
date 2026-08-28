@@ -29,6 +29,10 @@ for _var in ("NO_PROXY", "no_proxy"):
     _needed = "localhost,127.0.0.1,::1"
     os.environ[_var] = f"{_existing},{_needed}" if _existing else _needed
 
+# Tests validate against a local mock DNS server (challtestsrv) where propagation is
+# instant; don't inherit the real-world default wait.
+os.environ.setdefault("ACME_LAN_DNS_PROPAGATION_SECONDS", "0")
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 COMPOSE_FILE = REPO_ROOT / "docker-compose.test.yml"
 PEBBLE_DIRECTORY = "https://localhost:14000/dir"
@@ -198,7 +202,8 @@ def _find_binary(name: str, env_var: str) -> str | None:
         return found
     for candidate_dir in ("/home/user/go/bin", os.path.expanduser("~/go/bin"), "/root/go/bin"):
         candidate = Path(candidate_dir) / name
-        if candidate.exists():
+        # os.path.exists (unlike Path.exists) returns False on unreadable dirs like /root.
+        if os.path.exists(candidate):
             return str(candidate)
     return None
 

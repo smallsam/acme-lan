@@ -64,6 +64,34 @@ def _client_kwargs(upstream) -> dict:
     }
 
 
+def _log_authz_failures(acme_client, orderr) -> None:
+    """Best-effort: surface per-authorization failure details after a failed order.
+
+    ``finalize_order`` reports only "the order failed" — the actual reason (bad TXT,
+    CAA, timeout...) lives on the authorizations' challenges.
+    """
+    try:
+        for authz in orderr.authorizations:
+            updated, _ = acme_client.poll(authz)
+            body = updated.body
+            errors_seen = False
+            for challb in body.challenges:
+                if challb.error:
+                    errors_seen = True
+                    logger.error(
+                        "Upstream authz %s: %s challenge failed: %s",
+                        body.identifier.value,
+                        challb.typ,
+                        challb.error,
+                    )
+            if not errors_seen:
+                logger.error(
+                    "Upstream authz %s finished in status %s", body.identifier.value, body.status
+                )
+    except Exception:  # noqa: BLE001 - diagnostics only
+        logger.warning("Could not fetch authorization failure details", exc_info=True)
+
+
 def _fulfil_dns01(csr_pem: str, settings, upstream=None) -> str:
     acme_client, account_key = build_client(settings, **_client_kwargs(upstream))
     provider = get_dns_provider(settings)
@@ -91,7 +119,11 @@ def _fulfil_dns01(csr_pem: str, settings, upstream=None) -> str:
         deadline = datetime.datetime.now() + datetime.timedelta(
             seconds=settings.upstream_finalize_timeout
         )
-        finalized = acme_client.finalize_order(orderr, deadline)
+        try:
+            finalized = acme_client.finalize_order(orderr, deadline)
+        except Exception:
+            _log_authz_failures(acme_client, orderr)
+            raise
         return finalized.fullchain_pem
     finally:
         for _, _, record_name, validation in work:

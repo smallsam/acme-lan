@@ -1,6 +1,28 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { api, type Credential, type DeployPluginSpec, type ManagedHost, type PluginField } from './api'
+import {
+  Button,
+  Checkbox,
+  CheckboxField,
+  Description,
+  Dialog,
+  DialogActions,
+  DialogBody,
+  DialogTitle,
+  Field,
+  FieldGroup,
+  Fieldset,
+  Input,
+  Label,
+  Legend,
+  Listbox,
+  ListboxLabel,
+  ListboxOption,
+  Notice,
+  Text,
+  Textarea,
+} from './catalyst'
 
 const props = defineProps<{
   // null → add mode; an existing host → edit mode.
@@ -22,7 +44,8 @@ const form = reactive({
   csr_source: 'device',
   credential_id: '' as string,
 })
-// Per-field config values, keyed by the plugin field's key.
+// Per-field config values, keyed by the plugin field's key. Booleans are kept as the
+// strings 'true' / '' so the save path can treat every value uniformly.
 const config = reactive<Record<string, string>>({})
 const saving = ref(false)
 const errorMsg = ref('')
@@ -108,137 +131,114 @@ async function save() {
   }
 }
 
-const inputCls =
-  'w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800'
 </script>
 
 <template>
-  <div
-    class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 sm:items-center"
-    data-testid="host-modal"
-    @click.self="emit('close')"
-  >
-    <div
-      class="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-800 dark:bg-slate-950"
-    >
-      <div class="mb-4 flex items-center justify-between">
-        <h3 class="text-base font-semibold">{{ isEdit ? 'Edit host' : 'Add host' }}</h3>
-        <button
-          @click="emit('close')"
-          class="rounded-md px-2 py-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
-          aria-label="Close"
-        >
-          ✕
-        </button>
-      </div>
-
-      <div class="space-y-4">
-        <div class="grid grid-cols-2 gap-3">
-          <label class="text-xs">
-            <span class="mb-1 block text-slate-500 dark:text-slate-400">Name</span>
-            <input v-model="form.name" placeholder="esxi01" :class="inputCls" />
-          </label>
-          <label class="text-xs">
-            <span class="mb-1 block text-slate-500 dark:text-slate-400">Address</span>
-            <input v-model="form.address" placeholder="192.168.3.5" :class="inputCls" />
-          </label>
-          <label class="col-span-2 text-xs">
-            <span class="mb-1 block text-slate-500 dark:text-slate-400">Domains (comma-separated)</span>
-            <input v-model="form.domains" placeholder="esxi01.lan" :class="inputCls" />
-          </label>
-          <label class="text-xs">
-            <span class="mb-1 block text-slate-500 dark:text-slate-400">Port</span>
-            <input v-model="form.port" type="number" :class="inputCls" />
-          </label>
-          <label class="text-xs">
-            <span class="mb-1 block text-slate-500 dark:text-slate-400">Deploy plugin</span>
-            <select v-model="form.deploy_plugin" :class="inputCls" data-testid="plugin-select">
-              <option v-for="p in plugins" :key="p.name" :value="p.name">{{ p.name }}</option>
-            </select>
-          </label>
+  <Dialog :open="true" size="2xl" data-testid="host-modal" @close="emit('close')">
+    <DialogTitle>{{ isEdit ? 'Edit host' : 'Add host' }}</DialogTitle>
+    <DialogBody>
+      <div class="space-y-6">
+        <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <Field>
+            <Label>Name</Label>
+            <Input v-model="form.name" placeholder="esxi01" />
+          </Field>
+          <Field>
+            <Label>Address</Label>
+            <Input v-model="form.address" placeholder="192.168.3.5" />
+          </Field>
+          <Field class="sm:col-span-2">
+            <Label>Domains (comma-separated)</Label>
+            <Input v-model="form.domains" placeholder="esxi01.lan" />
+          </Field>
+          <Field>
+            <Label>Port</Label>
+            <Input v-model="form.port" type="number" />
+          </Field>
+          <Field>
+            <Label>Deploy plugin</Label>
+            <Listbox v-model="form.deploy_plugin" data-testid="plugin-select">
+              <ListboxOption v-for="p in plugins" :key="p.name" :value="p.name">
+                <ListboxLabel>{{ p.name }}</ListboxLabel>
+              </ListboxOption>
+            </Listbox>
+          </Field>
+          <Field>
+            <Label>CSR source</Label>
+            <Listbox v-model="form.csr_source" data-testid="csr-source-select">
+              <ListboxOption value="device" :disabled="!supportsDevice">
+                <ListboxLabel>device (key stays on device)</ListboxLabel>
+              </ListboxOption>
+              <ListboxOption value="local">
+                <ListboxLabel>local (acme-lan holds key)</ListboxLabel>
+              </ListboxOption>
+            </Listbox>
+          </Field>
+          <Field>
+            <Label>Credential (optional)</Label>
+            <Listbox v-model="form.credential_id" data-testid="credential-select">
+              <ListboxOption value=""><ListboxLabel>— none —</ListboxLabel></ListboxOption>
+              <ListboxOption v-for="c in credentials" :key="c.id" :value="c.id">
+                <ListboxLabel>{{ c.name }} ({{ c.username }})</ListboxLabel>
+              </ListboxOption>
+            </Listbox>
+          </Field>
         </div>
 
-        <div class="grid grid-cols-2 gap-3">
-          <label class="text-xs">
-            <span class="mb-1 block text-slate-500 dark:text-slate-400">CSR source</span>
-            <select v-model="form.csr_source" :class="inputCls" data-testid="csr-source-select">
-              <option value="device" :disabled="!supportsDevice">device (key stays on device)</option>
-              <option value="local">local (acme-lan holds key)</option>
-            </select>
-          </label>
-          <label class="text-xs">
-            <span class="mb-1 block text-slate-500 dark:text-slate-400">Credential (optional)</span>
-            <select v-model="form.credential_id" :class="inputCls" data-testid="credential-select">
-              <option value="">— none —</option>
-              <option v-for="c in credentials" :key="c.id" :value="c.id">
-                {{ c.name }} ({{ c.username }})
-              </option>
-            </select>
-          </label>
-        </div>
-
-        <div
-          v-if="form.csr_source === 'local'"
-          class="rounded-md bg-amber-100 px-3 py-2 text-xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
-        >
+        <Notice v-if="form.csr_source === 'local'" color="amber">
           ⚠ With <b>local</b> CSR source, acme-lan generates and stores the private key. Prefer
           <b>device</b> so the private key never leaves the device.
-        </div>
+        </Notice>
 
         <!-- Plugin-specific config, rendered as real form fields and updated as the plugin
              type / CSR mode changes. -->
-        <div class="space-y-3 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-          <div class="text-xs font-semibold uppercase tracking-wide text-slate-400">
-            {{ form.deploy_plugin }} configuration
-          </div>
-          <p v-if="visibleFields.length === 0" class="text-xs text-slate-400">
-            This plugin needs no extra configuration.
-          </p>
-          <label v-for="f in visibleFields" :key="f.key" class="block text-xs">
-            <span class="mb-1 block text-slate-500 dark:text-slate-400">
-              {{ f.label }}<span v-if="f.required" class="text-red-500">&nbsp;*</span>
-            </span>
-            <textarea
-              v-if="f.type === 'textarea'"
-              v-model="config[f.key]"
-              :placeholder="f.placeholder"
-              rows="2"
-              :class="inputCls"
-            />
-            <input
-              v-else
-              v-model="config[f.key]"
-              :type="f.type === 'number' ? 'number' : f.type === 'password' ? 'password' : 'text'"
-              :placeholder="f.placeholder"
-              :class="inputCls"
-            />
-            <span v-if="f.help" class="mt-1 block text-[11px] text-slate-400">{{ f.help }}</span>
-          </label>
-        </div>
+        <Fieldset>
+          <Legend>{{ form.deploy_plugin }} configuration</Legend>
+          <Text v-if="visibleFields.length === 0">This plugin needs no extra configuration.</Text>
+          <FieldGroup class="space-y-6">
+            <template v-for="f in visibleFields" :key="f.key">
+              <!-- Booleans render as a real checkbox with the label beside it, not above. -->
+              <CheckboxField v-if="f.type === 'checkbox'">
+                <Checkbox
+                  :model-value="config[f.key] === 'true'"
+                  :data-testid="`cfg-${f.key}`"
+                  @update:model-value="config[f.key] = $event ? 'true' : ''"
+                />
+                <Label>{{ f.label }}</Label>
+                <Description v-if="f.help">{{ f.help }}</Description>
+              </CheckboxField>
+              <Field v-else>
+                <Label>
+                  {{ f.label }}<span v-if="f.required" class="text-red-500">&nbsp;*</span>
+                </Label>
+                <Textarea
+                  v-if="f.type === 'textarea'"
+                  v-model="config[f.key]"
+                  :placeholder="f.placeholder"
+                  rows="2"
+                />
+                <Input
+                  v-else
+                  v-model="config[f.key]"
+                  :type="f.type === 'number' ? 'number' : f.type === 'password' ? 'password' : 'text'"
+                  :placeholder="f.placeholder"
+                  :data-testid="`cfg-${f.key}`"
+                />
+                <Description v-if="f.help">{{ f.help }}</Description>
+              </Field>
+            </template>
+          </FieldGroup>
+        </Fieldset>
 
-        <div
-          v-if="errorMsg"
-          class="rounded-md bg-red-100 px-3 py-2 text-xs text-red-700 dark:bg-red-900/40 dark:text-red-300"
-        >
-          {{ errorMsg }}
-        </div>
+        <Notice v-if="errorMsg" color="red">{{ errorMsg }}</Notice>
       </div>
+    </DialogBody>
 
-      <div class="mt-6 flex justify-end gap-2">
-        <button
-          @click="emit('close')"
-          class="rounded-md border border-slate-300 px-4 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-        >
-          Cancel
-        </button>
-        <button
-          @click="save"
-          :disabled="saving"
-          class="rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
-        >
-          {{ isEdit ? 'Save changes' : 'Add host' }}
-        </button>
-      </div>
-    </div>
-  </div>
+    <DialogActions>
+      <Button plain @click="emit('close')">Cancel</Button>
+      <Button :disabled="saving" @click="save">
+        {{ isEdit ? 'Save changes' : 'Add host' }}
+      </Button>
+    </DialogActions>
+  </Dialog>
 </template>

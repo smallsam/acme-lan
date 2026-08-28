@@ -34,9 +34,40 @@ class TlsHealth:
     chain_trusted: bool | None = None
     san: list[str] | None = None
     name_matches: bool | None = None
+    # Negotiated protocol, e.g. "TLSv1.2". Old appliances often top out at TLSv1/TLSv1.1,
+    # which is worth showing rather than reporting as an unexplained failure.
+    tls_version: str | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+def _permissive_client_context(*, verify: bool) -> ssl.SSLContext:
+    """Build a client context that can still talk to legacy appliances.
+
+    acme-lan exists to put certificates on old gear, so the probe has to be able to reach
+    it: modern defaults (TLS 1.2 minimum, security level 2) refuse the TLS 1.0/1.1 and
+    older ciphers that switches, iDRACs and printers offer, which would show up as a bare
+    handshake failure. Certificate *verification* is unaffected — ``verify`` still decides
+    that, so the trust verdict stays honest.
+    """
+    if verify:
+        ctx = ssl.create_default_context()
+    else:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    try:
+        ctx.minimum_version = ssl.TLSVersion.TLSv1
+    except (ValueError, OSError):  # pragma: no cover - build without TLS 1.0
+        pass
+    # SECLEVEL 0 for the unverified read (we only want to see the certificate); 1 when
+    # verifying, so the chain still has to stand up on its own merits.
+    try:
+        ctx.set_ciphers("ALL:@SECLEVEL=0" if not verify else "DEFAULT:@SECLEVEL=1")
+    except ssl.SSLError:  # pragma: no cover - policy forbids lowering the level
+        pass
+    return ctx
 
 
 def _san_names(cert: x509.Certificate) -> list[str]:
@@ -56,18 +87,18 @@ def _name_matches(names: list[str], server_name: str) -> bool:
     return False
 
 
-async def _fetch_peer_cert(host: str, port: int, server_name: str, timeout: float) -> bytes:
+async def _fetch_peer_cert(
+    host: str, port: int, server_name: str, timeout: float
+) -> tuple[bytes, str | None]:
     """Grab the peer's leaf certificate (DER) without verifying it, so we can still
-    report on expired/untrusted certs."""
-    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
+    report on expired/untrusted certs. Also returns the negotiated protocol version."""
+    ctx = _permissive_client_context(verify=False)
     reader, writer = await asyncio.wait_for(
         asyncio.open_connection(host, port, ssl=ctx, server_hostname=server_name), timeout
     )
     try:
         ssl_obj = writer.get_extra_info("ssl_object")
-        return ssl_obj.getpeercert(binary_form=True)
+        return ssl_obj.getpeercert(binary_form=True), ssl_obj.version()
     finally:
         writer.close()
         try:
@@ -78,7 +109,7 @@ async def _fetch_peer_cert(host: str, port: int, server_name: str, timeout: floa
 
 async def _is_chain_trusted(host: str, port: int, server_name: str, timeout: float) -> bool:
     """A second handshake with full verification against the system trust store."""
-    ctx = ssl.create_default_context()
+    ctx = _permissive_client_context(verify=True)
     try:
         _reader, writer = await asyncio.wait_for(
             asyncio.open_connection(host, port, ssl=ctx, server_hostname=server_name), timeout
@@ -101,12 +132,15 @@ async def probe_tls(
     """Probe ``host:port`` and return a :class:`TlsHealth` snapshot."""
     sni = server_name or host
     try:
-        der = await _fetch_peer_cert(host, port, sni, timeout)
+        der, tls_version = await _fetch_peer_cert(host, port, sni, timeout)
     except Exception as exc:  # noqa: BLE001
         return TlsHealth(host=host, port=port, reachable=False, error=str(exc))
 
     if not der:
-        return TlsHealth(host=host, port=port, reachable=True, error="No peer certificate")
+        return TlsHealth(
+            host=host, port=port, reachable=True, error="No peer certificate",
+            tls_version=tls_version,
+        )
 
     cert = x509.load_der_x509_certificate(der)
     now = datetime.now(UTC)
@@ -134,4 +168,5 @@ async def probe_tls(
         chain_trusted=trusted,
         san=san,
         name_matches=_name_matches(san or [_cn(cert.subject)], sni),
+        tls_version=tls_version,
     )

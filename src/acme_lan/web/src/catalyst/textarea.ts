@@ -1,0 +1,61 @@
+// Vue port of Catalyst's textarea.tsx. Classes verbatim; data-* states → native states.
+import { defineComponent, h, type PropType } from 'vue'
+
+export const Textarea = defineComponent({
+  name: 'CatalystTextarea',
+  inheritAttrs: false,
+  props: {
+    modelValue: { type: String as PropType<string | null>, default: undefined },
+    resizable: { type: Boolean, default: true },
+    invalid: { type: Boolean, default: false },
+  },
+  emits: ['update:modelValue'],
+  setup(props, { attrs, emit }) {
+    return () => {
+      const { class: klass, ...rest } = attrs
+      return h(
+        'span',
+        {
+          'data-slot': 'control',
+          class: [
+            klass,
+            // Basic layout
+            'relative block w-full',
+            // Background color + shadow applied to inset pseudo element, so shadow blends with border in light mode
+            'before:absolute before:inset-px before:rounded-[calc(var(--radius-lg)-1px)] before:bg-white before:shadow-sm',
+            // Background color is moved to control and shadow is removed in dark mode so hide `before` pseudo
+            'dark:before:hidden',
+            // Focus ring
+            'after:pointer-events-none after:absolute after:inset-0 after:rounded-lg after:ring-transparent after:ring-inset sm:focus-within:after:ring-2 sm:focus-within:after:ring-blue-500',
+            // Disabled state
+            'has-[:disabled]:opacity-50 has-[:disabled]:before:bg-zinc-950/5 has-[:disabled]:before:shadow-none',
+          ],
+        },
+        h('textarea', {
+          ...rest,
+          value: props.modelValue === undefined ? (rest.value as string | undefined) : (props.modelValue ?? ''),
+          'aria-invalid': props.invalid ? 'true' : undefined,
+          onInput: (event: Event) => emit('update:modelValue', (event.target as HTMLTextAreaElement).value),
+          class: [
+            // Basic layout
+            'relative block h-full w-full appearance-none rounded-lg px-[calc(--spacing(3.5)-1px)] py-[calc(--spacing(2.5)-1px)] sm:px-[calc(--spacing(3)-1px)] sm:py-[calc(--spacing(1.5)-1px)]',
+            // Typography
+            'text-base/6 text-zinc-950 placeholder:text-zinc-500 sm:text-sm/6 dark:text-white',
+            // Border
+            'border border-zinc-950/10 hover:border-zinc-950/20 dark:border-white/10 dark:hover:border-white/20',
+            // Background color
+            'bg-transparent dark:bg-white/5',
+            // Hide default focus styles
+            'focus:outline-hidden',
+            // Invalid state
+            'aria-invalid:border-red-500 aria-invalid:hover:border-red-500 dark:aria-invalid:border-red-600 dark:aria-invalid:hover:border-red-600',
+            // Disabled state
+            'disabled:border-zinc-950/20 dark:disabled:border-white/15 dark:disabled:bg-white/2.5 dark:hover:disabled:border-white/15',
+            // Resizable
+            props.resizable ? 'resize-y' : 'resize-none',
+          ],
+        }),
+      )
+    }
+  },
+})

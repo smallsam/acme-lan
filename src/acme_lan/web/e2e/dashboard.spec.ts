@@ -3,7 +3,8 @@ import { expect, test } from '@playwright/test'
 test.describe('dashboard', () => {
   test('renders the header and seeded stats', async ({ page }) => {
     await page.goto('/')
-    await expect(page.getByRole('heading', { name: 'acme-lan' })).toBeVisible()
+    // The brand lives in the stacked layout's navbar rather than a page heading.
+    await expect(page.locator('header').getByText('acme-lan')).toBeVisible()
     // Two certificates were seeded (one ACME-client cert, one pushed to a device).
     await expect(page.getByTestId('stat-certificates')).toHaveText('2')
   })
@@ -14,7 +15,10 @@ test.describe('dashboard', () => {
     await expect(row).toBeVisible()
     // A realtime health badge renders (…, unreachable, expired, or "Nd left").
     await expect(row.locator('span').first()).toBeVisible()
-    await expect(row.getByRole('button', { name: 're-check' })).toBeVisible()
+    // Row actions live in the Catalyst options dropdown.
+    await row.getByRole('button', { name: 'More options' }).click()
+    await expect(page.getByRole('menuitem', { name: 'Re-check health' })).toBeVisible()
+    await page.keyboard.press('Escape')
   })
 
   test('ad-hoc TLS probe returns a result for a closed port', async ({ page }) => {

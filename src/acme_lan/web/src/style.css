@@ -1,1 +1,13 @@
 @import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+/*
+ * All component styling lives in src/catalyst/ — a 1:1 Vue port of Tailwind's Catalyst UI
+ * kit (see catalyst-ui-kit/ at the repo root for the upstream React sources). This file
+ * only wires up the theme: Catalyst is designed around Inter.
+ */
+
+@theme {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}

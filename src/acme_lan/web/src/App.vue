@@ -1,345 +1,272 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+// Shell: resolves who's signed in, then shows either the login screen or the dashboard in
+// a Catalyst stacked layout — navbar tabs on desktop, slide-in sidebar on mobile, and an
+// account dropdown on the right. Each tab is its own view component.
+import { computed, onMounted, ref } from 'vue'
+import { api, getToken, setToken, type AuthStatus, type ServerInfo } from './api'
 import {
-  api,
-  getToken,
-  setToken,
-  type Certificate,
-  type CertSummary,
-  type Credential,
-  type DeployPluginSpec,
-  type ManagedHost,
-  type Stats,
-  type TlsHealth,
-} from './api'
-import HostModal from './HostModal.vue'
+  Avatar,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogBody,
+  DialogDescription,
+  DialogTitle,
+  Dropdown,
+  DropdownButton,
+  DropdownDivider,
+  DropdownHeader,
+  DropdownItem,
+  DropdownLabel,
+  DropdownMenu,
+  Field,
+  Input,
+  Label,
+  Navbar,
+  NavbarDivider,
+  NavbarItem,
+  NavbarLabel,
+  NavbarSection,
+  NavbarSpacer,
+  Notice,
+  Sidebar,
+  SidebarBody,
+  SidebarHeader,
+  SidebarItem,
+  SidebarLabel,
+  SidebarSection,
+  StackedLayout,
+} from './catalyst'
+import CertificatesView from './CertificatesView.vue'
+import CredentialsView from './CredentialsView.vue'
+import HostsView from './HostsView.vue'
+import LoginView from './LoginView.vue'
+import SettingsView from './SettingsView.vue'
+import UsersView from './UsersView.vue'
 
-const stats = ref<Stats | null>(null)
-const certificates = ref<Certificate[]>([])
-const health = reactive<Record<string, TlsHealth | 'loading' | undefined>>({})
-const error = ref<string>('')
-const token = ref<string>(getToken())
+type Tab = 'certificates' | 'hosts' | 'credentials' | 'users' | 'settings'
 
-const hosts = ref<ManagedHost[]>([])
-const hostMsg = ref<string>('')
-const deployPlugins = ref<DeployPluginSpec[]>([])
-const credentials = ref<Credential[]>([])
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'certificates', label: 'Certificates' },
+  { id: 'hosts', label: 'Hosts' },
+  { id: 'credentials', label: 'Credentials' },
+  { id: 'users', label: 'Users' },
+  { id: 'settings', label: 'Settings' },
+]
 
-// Modal state: closed when null; editing an existing host or adding a new one.
-const modalOpen = ref(false)
-const editingHost = ref<ManagedHost | null>(null)
+const tab = ref<Tab>('certificates')
+const authStatus = ref<AuthStatus | null>(null)
+const ready = ref(false)
+const token = ref(getToken())
+const showToken = ref(false)
+// An OIDC round trip that failed comes back as ?login_error=…
+const loginError = ref(new URLSearchParams(window.location.search).get('login_error') || '')
 
-const probeForm = reactive({ host: '', port: 443, server_name: '' })
-const probeResult = ref<TlsHealth | null>(null)
-const probeError = ref<string>('')
+// When viewed over plain HTTP while a trusted HTTPS listener is up, point at it.
+const serverInfo = ref<ServerInfo | null>(null)
+const showHttpsBanner = computed(
+  () =>
+    window.location.protocol === 'http:' &&
+    !!serverInfo.value?.tls_active &&
+    !!serverInfo.value?.https_url,
+)
 
-async function loadAll() {
-  error.value = ''
+// Set when the user asks to sign in even though login isn't mandatory.
+const forceLogin = ref(false)
+
+// Show the login screen when login is mandatory and nobody is signed in, or on first run
+// when there are no accounts at all.
+const mustSignIn = computed(() => {
+  const status = authStatus.value
+  if (!status) return false
+  if (status.user) return false
+  return status.auth_required || forceLogin.value
+})
+
+const userInitials = computed(() => (authStatus.value?.user?.username || '?').slice(0, 2))
+
+async function refreshAuth() {
   try {
-    stats.value = await api.stats()
-    certificates.value = await api.certificates()
-    hosts.value = await api.hosts().catch(() => [])
-    deployPlugins.value = await api.deployPlugins().catch(() => [])
-    credentials.value = await api.credentials().catch(() => [])
-    // Kick off a realtime health probe for every certificate.
-    for (const cert of certificates.value) checkHealth(cert.id)
-  } catch (e: any) {
-    error.value = e.message || String(e)
+    authStatus.value = await api.authStatus()
+  } catch {
+    // An older server without the auth endpoints: carry on unauthenticated.
+    authStatus.value = null
   }
 }
 
-function openAddHost() {
-  editingHost.value = null
-  modalOpen.value = true
+async function onSignedIn() {
+  loginError.value = ''
+  forceLogin.value = false
+  // Drop the ?login_error= from the address bar so a refresh doesn't resurrect it.
+  window.history.replaceState({}, '', window.location.pathname)
+  await refreshAuth()
 }
 
-function openEditHost(host: ManagedHost) {
-  editingHost.value = host
-  modalOpen.value = true
-}
-
-async function onHostSaved() {
-  modalOpen.value = false
-  hostMsg.value = ''
-  hosts.value = await api.hosts()
-}
-
-async function renewHost(id: string) {
-  hostMsg.value = 'renewing…'
-  try {
-    const r = await api.renewHost(id)
-    hostMsg.value = r.ok ? 'renewed & deployed' : `error: ${r.detail}`
-    hosts.value = await api.hosts()
-  } catch (e: any) {
-    hostMsg.value = e.message || String(e)
-  }
-}
-
-async function removeHost(id: string) {
-  await api.deleteHost(id)
-  hosts.value = await api.hosts()
-}
-
-async function checkHealth(id: string) {
-  health[id] = 'loading'
-  try {
-    health[id] = await api.certificateHealth(id)
-  } catch (e: any) {
-    health[id] = { host: '', port: 0, reachable: false, error: e.message }
-  }
-}
-
-async function runProbe() {
-  probeError.value = ''
-  probeResult.value = null
-  try {
-    probeResult.value = await api.probe(
-      probeForm.host,
-      Number(probeForm.port),
-      probeForm.server_name || undefined,
-    )
-  } catch (e: any) {
-    probeError.value = e.message || String(e)
-  }
+async function signOut() {
+  await api.logout().catch(() => {})
+  forceLogin.value = false
+  await refreshAuth()
+  tab.value = 'certificates'
 }
 
 function saveToken() {
   setToken(token.value)
-  loadAll()
+  showToken.value = false
+  window.location.reload()
 }
 
-function healthBadge(h: TlsHealth | 'loading' | undefined): { text: string; cls: string } {
-  if (h === 'loading' || h === undefined) return { text: '…', cls: 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300' }
-  if (!h.reachable) return { text: 'unreachable', cls: 'bg-slate-300 text-slate-700 dark:bg-slate-600 dark:text-slate-200' }
-  if (h.expired) return { text: 'expired', cls: 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300' }
-  const days = h.days_remaining ?? 0
-  if (days < 14) return { text: `${days}d left`, cls: 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300' }
-  return { text: `${days}d left`, cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300' }
-}
-
-function fmtDate(s: string | null | undefined): string {
-  if (!s) return '—'
-  return new Date(s).toLocaleString()
-}
-
-// Badge for a certificate's stored expiry (as opposed to the live TLS probe above).
-function expiryBadge(cert: CertSummary): { text: string; cls: string } {
-  if (cert.expired) return { text: 'expired', cls: 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300' }
-  const days = cert.days_until_expiry
-  const cls = cert.expiring_soon
-    ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300'
-    : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300'
-  return { text: days != null ? `${days}d left` : 'valid', cls }
-}
-
-onMounted(loadAll)
+onMounted(async () => {
+  await refreshAuth()
+  ready.value = true
+  api
+    .serverInfo()
+    .then((info) => (serverInfo.value = info))
+    .catch(() => {})
+})
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-50 text-slate-800 dark:bg-slate-900 dark:text-slate-100">
-    <header class="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-      <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-4">
-        <div class="flex items-center gap-3">
-          <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600 font-bold text-white">🔒</div>
-          <div>
-            <h1 class="text-lg font-semibold">acme-lan</h1>
-            <p class="text-xs text-slate-500 dark:text-slate-400">Internal ACME server · certificate dashboard</p>
-          </div>
-        </div>
-        <div class="flex items-center gap-2">
-          <input
-            v-model="token"
-            type="password"
-            placeholder="admin token (if set)"
-            class="w-44 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800"
-          />
-          <button
-            @click="saveToken"
-            class="rounded-md bg-indigo-600 px-3 py-1 text-sm font-medium text-white hover:bg-indigo-500"
-          >
-            Refresh
-          </button>
-        </div>
-      </div>
-    </header>
-
-    <main class="mx-auto max-w-6xl space-y-8 px-6 py-8">
-      <div v-if="error" class="rounded-md bg-red-100 px-4 py-3 text-sm text-red-700 dark:bg-red-900/40 dark:text-red-300">
-        {{ error }}
-      </div>
-
-      <!-- Stats -->
-      <section class="grid grid-cols-2 gap-4 sm:grid-cols-3">
-        <div class="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
-          <div class="text-2xl font-semibold" data-testid="stat-certificates">{{ stats?.certificates_total ?? '—' }}</div>
-          <div class="text-xs text-slate-500 dark:text-slate-400">Certificates issued</div>
-        </div>
-        <div class="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
-          <div class="text-2xl font-semibold">{{ stats?.orders_total ?? '—' }}</div>
-          <div class="text-xs text-slate-500 dark:text-slate-400">Orders total</div>
-        </div>
-        <div class="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
-          <div class="text-2xl font-semibold">{{ stats?.orders_by_status?.valid ?? 0 }}</div>
-          <div class="text-xs text-slate-500 dark:text-slate-400">Orders valid</div>
-        </div>
-      </section>
-
-      <!-- Certificates -->
-      <section>
-        <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Certificates</h2>
-        <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-          <table class="w-full text-left text-sm">
-            <thead class="border-b border-slate-200 text-xs uppercase text-slate-500 dark:border-slate-800 dark:text-slate-400">
-              <tr>
-                <th class="px-4 py-3">Domain(s)</th>
-                <th class="px-4 py-3">Device</th>
-                <th class="px-4 py-3">Live health</th>
-                <th class="px-4 py-3">Trusted</th>
-                <th class="px-4 py-3">Expires</th>
-                <th class="px-4 py-3">Issued</th>
-                <th class="px-4 py-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-if="certificates.length === 0">
-                <td colspan="7" class="px-4 py-6 text-center text-slate-400">No certificates issued yet.</td>
-              </tr>
-              <tr
-                v-for="cert in certificates"
-                :key="cert.id"
-                class="border-b border-slate-100 last:border-0 dark:border-slate-800/60"
-              >
-                <td class="px-4 py-3 font-medium">
-                  {{ cert.primary_domain }}
-                  <span v-if="cert.domains.length > 1" class="text-xs text-slate-400">+{{ cert.domains.length - 1 }}</span>
-                </td>
-                <td class="px-4 py-3">
-                  <span
-                    v-if="cert.host_name"
-                    class="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
-                    :title="`Pushed to device ${cert.host_name}`"
-                  >
-                    📡 {{ cert.host_name }}
-                  </span>
-                  <span v-else class="text-xs text-slate-400">— ACME client —</span>
-                </td>
-                <td class="px-4 py-3">
-                  <span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="healthBadge(health[cert.id]).cls">
-                    {{ healthBadge(health[cert.id]).text }}
-                  </span>
-                </td>
-                <td class="px-4 py-3">
-                  <span v-if="health[cert.id] && health[cert.id] !== 'loading'">
-                    {{ (health[cert.id] as TlsHealth).chain_trusted ? '✓' : '✗' }}
-                  </span>
-                  <span v-else class="text-slate-400">—</span>
-                </td>
-                <td class="px-4 py-3 text-slate-500 dark:text-slate-400">{{ fmtDate(cert.not_after) }}</td>
-                <td class="px-4 py-3 text-slate-500 dark:text-slate-400">{{ fmtDate(cert.issued_at) }}</td>
-                <td class="px-4 py-3 text-right">
-                  <button @click="checkHealth(cert.id)" class="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400">
-                    re-check
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <!-- Managed hosts -->
-      <section>
-        <div class="mb-3 flex items-center justify-between">
-          <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Managed hosts</h2>
-          <button
-            @click="openAddHost"
-            class="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500"
-          >
-            + Add host
-          </button>
-        </div>
-        <p class="mb-3 text-xs text-slate-400">Devices that can't run ACME (ESXi, printers, switches). acme-lan issues the cert and pushes it via a deploy plugin.</p>
-        <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-          <table class="w-full text-left text-sm">
-            <thead class="border-b border-slate-200 text-xs uppercase text-slate-500 dark:border-slate-800 dark:text-slate-400">
-              <tr>
-                <th class="px-4 py-3">Name</th>
-                <th class="px-4 py-3">Domain(s)</th>
-                <th class="px-4 py-3">Target</th>
-                <th class="px-4 py-3">Plugin</th>
-                <th class="px-4 py-3">Latest cert</th>
-                <th class="px-4 py-3">Last status</th>
-                <th class="px-4 py-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-if="hosts.length === 0">
-                <td colspan="7" class="px-4 py-6 text-center text-slate-400">No managed hosts yet.</td>
-              </tr>
-              <tr v-for="host in hosts" :key="host.id" class="border-b border-slate-100 last:border-0 dark:border-slate-800/60">
-                <td class="px-4 py-3 font-medium">{{ host.name }}</td>
-                <td class="px-4 py-3">{{ host.domains.join(', ') }}</td>
-                <td class="px-4 py-3 text-slate-500 dark:text-slate-400">{{ host.address }}:{{ host.port }}</td>
-                <td class="px-4 py-3"><code class="text-xs">{{ host.deploy_plugin }}</code></td>
-                <td class="px-4 py-3">
-                  <span
-                    v-if="host.latest_certificate"
-                    class="rounded-full px-2 py-0.5 text-xs font-medium"
-                    :class="expiryBadge(host.latest_certificate).cls"
-                    :title="`${host.certificate_count} certificate(s) issued for this device`"
-                  >
-                    {{ expiryBadge(host.latest_certificate).text }}
-                    <span v-if="host.certificate_count > 1" class="opacity-70">· {{ host.certificate_count }}</span>
-                  </span>
-                  <span v-else class="text-xs text-slate-400">none yet</span>
-                </td>
-                <td class="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">{{ host.last_status || '—' }}</td>
-                <td class="px-4 py-3 text-right whitespace-nowrap">
-                  <button @click="openEditHost(host)" class="mr-3 text-xs font-medium text-slate-600 hover:underline dark:text-slate-300">edit</button>
-                  <button @click="renewHost(host.id)" class="mr-3 text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400">renew</button>
-                  <button @click="removeHost(host.id)" class="text-xs font-medium text-red-600 hover:underline dark:text-red-400">delete</button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div v-if="hostMsg" class="mt-2 text-xs text-slate-500 dark:text-slate-400">{{ hostMsg }}</div>
-      </section>
-
-      <!-- Ad-hoc probe -->
-      <section>
-        <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Probe any TLS endpoint</h2>
-        <div class="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
-          <div class="flex flex-wrap items-end gap-3">
-            <label class="text-xs">
-              <span class="mb-1 block text-slate-500 dark:text-slate-400">Host</span>
-              <input v-model="probeForm.host" placeholder="ldap.lan" class="w-48 rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-800" />
-            </label>
-            <label class="text-xs">
-              <span class="mb-1 block text-slate-500 dark:text-slate-400">Port</span>
-              <input v-model="probeForm.port" type="number" class="w-24 rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-800" />
-            </label>
-            <label class="text-xs">
-              <span class="mb-1 block text-slate-500 dark:text-slate-400">SNI (optional)</span>
-              <input v-model="probeForm.server_name" placeholder="defaults to host" class="w-48 rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-800" />
-            </label>
-            <button @click="runProbe" class="rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-500">Probe</button>
-          </div>
-          <p class="mt-2 text-xs text-slate-400">Does a raw TLS handshake — works for LDAPS, SMTPS, and any TLS port, not just HTTPS.</p>
-
-          <div v-if="probeError" class="mt-3 rounded-md bg-red-100 px-3 py-2 text-xs text-red-700 dark:bg-red-900/40 dark:text-red-300">{{ probeError }}</div>
-          <pre v-if="probeResult" class="mt-3 overflow-x-auto rounded-md bg-slate-100 p-3 text-xs dark:bg-slate-800">{{ JSON.stringify(probeResult, null, 2) }}</pre>
-        </div>
-      </section>
-    </main>
-
-    <HostModal
-      v-if="modalOpen"
-      :host="editingHost"
-      :plugins="deployPlugins"
-      :credentials="credentials"
-      @close="modalOpen = false"
-      @saved="onHostSaved"
+  <template v-if="ready">
+    <LoginView
+      v-if="mustSignIn && authStatus"
+      :status="authStatus"
+      :initial-error="loginError"
+      @signed-in="onSignedIn"
     />
-  </div>
+
+    <StackedLayout v-else>
+      <template #navbar>
+        <Navbar>
+          <NavbarItem @click="tab = 'certificates'">
+            <Avatar square initials="al" class="bg-zinc-900 text-white dark:bg-white dark:text-zinc-900" />
+            <NavbarLabel>acme-lan</NavbarLabel>
+          </NavbarItem>
+          <NavbarDivider class="max-lg:hidden" />
+          <NavbarSection class="max-lg:hidden">
+            <NavbarItem
+              v-for="entry in TABS"
+              :key="entry.id"
+              :current="tab === entry.id"
+              :data-testid="`tab-${entry.id}`"
+              @click="tab = entry.id"
+            >
+              {{ entry.label }}
+            </NavbarItem>
+          </NavbarSection>
+          <NavbarSpacer />
+          <NavbarSection>
+            <NavbarItem
+              v-if="authStatus?.token_auth_enabled"
+              title="Provide the admin API token for this browser"
+              @click="showToken = true"
+            >
+              <svg data-slot="icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path
+                  fill-rule="evenodd"
+                  d="M8 7a5 5 0 1 1 3.61 4.804l-1.903 1.903A1 1 0 0 1 9 14H8v1a1 1 0 0 1-1 1H6v1a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-2a1 1 0 0 1 .293-.707L8.196 8.39A5.002 5.002 0 0 1 8 7Zm5-3a.75.75 0 0 0 0 1.5A1.5 1.5 0 0 1 14.5 7 .75.75 0 0 0 16 7a3 3 0 0 0-3-3Z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+            </NavbarItem>
+
+            <Dropdown v-if="authStatus?.user">
+              <DropdownButton :as="NavbarItem" data-testid="account-menu">
+                <Avatar square :initials="userInitials" />
+                <svg data-slot="icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                  <path
+                    fill-rule="evenodd"
+                    d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+              </DropdownButton>
+              <DropdownMenu class="min-w-64" anchor="bottom end">
+                <DropdownHeader>
+                  <div class="pr-6">
+                    <div class="text-xs text-zinc-500 dark:text-zinc-400">Signed in as</div>
+                    <div class="text-sm/7 font-semibold text-zinc-800 dark:text-white">
+                      {{ authStatus.user.username }}
+                      <span v-if="authStatus.user.provider === 'oidc'" class="font-normal text-zinc-500">(SSO)</span>
+                    </div>
+                  </div>
+                </DropdownHeader>
+                <DropdownDivider />
+                <DropdownItem data-testid="sign-out" @click="signOut">
+                  <DropdownLabel>Sign out</DropdownLabel>
+                </DropdownItem>
+              </DropdownMenu>
+            </Dropdown>
+            <NavbarItem
+              v-else-if="authStatus?.oidc_enabled || authStatus?.local_login_enabled"
+              data-testid="sign-in"
+              @click="forceLogin = true"
+            >
+              Sign in
+            </NavbarItem>
+          </NavbarSection>
+        </Navbar>
+      </template>
+
+      <template #sidebar>
+        <Sidebar>
+          <SidebarHeader>
+            <div class="flex items-center gap-3 px-2 py-1">
+              <Avatar square initials="al" class="size-6 bg-zinc-900 text-white dark:bg-white dark:text-zinc-900" />
+              <SidebarLabel class="font-semibold">acme-lan</SidebarLabel>
+            </div>
+          </SidebarHeader>
+          <SidebarBody>
+            <SidebarSection>
+              <SidebarItem
+                v-for="entry in TABS"
+                :key="entry.id"
+                :current="tab === entry.id"
+                @click="tab = entry.id"
+              >
+                <SidebarLabel>{{ entry.label }}</SidebarLabel>
+              </SidebarItem>
+            </SidebarSection>
+          </SidebarBody>
+        </Sidebar>
+      </template>
+
+      <div class="space-y-6">
+        <Notice v-if="showHttpsBanner" color="amber" data-testid="https-banner">
+          🔓 You're viewing the dashboard over plain HTTP —
+          <a :href="serverInfo!.https_url!" class="font-semibold underline underline-offset-2">
+            switch to the trusted HTTPS version
+          </a>
+        </Notice>
+        <Notice v-if="loginError" color="red" data-testid="login-error-banner">
+          Sign-in failed: {{ loginError }}
+        </Notice>
+
+        <CertificatesView v-if="tab === 'certificates'" />
+        <HostsView v-else-if="tab === 'hosts'" />
+        <CredentialsView v-else-if="tab === 'credentials'" />
+        <UsersView v-else-if="tab === 'users'" :status="authStatus" />
+        <SettingsView
+          v-else-if="tab === 'settings'"
+          :oidc-redirect-uri="authStatus?.oidc_redirect_uri"
+        />
+      </div>
+    </StackedLayout>
+
+    <Dialog :open="showToken" size="sm" @close="showToken = false">
+      <DialogTitle>Admin API token</DialogTitle>
+      <DialogDescription>
+        Stored in this browser and sent with every management request.
+      </DialogDescription>
+      <DialogBody>
+        <Field>
+          <Label>Token</Label>
+          <Input v-model="token" type="password" placeholder="admin token" />
+        </Field>
+      </DialogBody>
+      <DialogActions>
+        <Button plain @click="showToken = false">Cancel</Button>
+        <Button @click="saveToken">Use token</Button>
+      </DialogActions>
+    </Dialog>
+  </template>
 </template>

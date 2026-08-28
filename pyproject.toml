@@ -19,6 +19,8 @@ dependencies = [
     "pydantic-settings>=2.4",
     "paramiko>=3.4",
     "alembic>=1.13",
+    # The dashboard-managed configuration file (see acme_lan.configfile).
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
