@@ -111,6 +111,19 @@ function card(s, o) {
   }
 }
 
+/** A full-bleed violet section divider. */
+function divider(s, head, sub, kick) {
+  s.addText(head, {
+    x: 0.85, y: 2.2, w: 11.8, h: 1.4, isTextBox: true, margin: 0,
+    fontFace: SANS, fontSize: 54, bold: true, color: LIME, valign: 'middle',
+  })
+  s.addText(sub, {
+    x: 0.9, y: 3.75, w: 11.6, h: 1.0, isTextBox: true, margin: 0,
+    fontFace: SANS, fontSize: 22, color: WHITE, lineSpacingMultiple: 1.15,
+  })
+  if (kick) kicker(s, kick, LAVENDER)
+}
+
 /** Rounded white plate behind a light-UI screenshot. */
 function shot(s, file, o) {
   s.addShape(pres.ShapeType.roundRect, {
@@ -157,28 +170,10 @@ function shot(s, file, o) {
   })
 }
 
-// ========================================================= 2. thisisunsafe =
-{
-  const s = newSlide(
-    '[0:12] This is the problem slide. Everyone in this room knows this string.\n' +
-    'Type it into a Chrome interstitial, it clicks through. I know it by muscle memory. That is the bug.',
-    VIOLET
-  )
-  s.addText('thisisunsafe', {
-    x: 0.85, y: 1.9, w: 12, h: 1.9, isTextBox: true, margin: 0,
-    fontFace: MONO, fontSize: 88, bold: true, color: LIME, valign: 'middle',
-  })
-  s.addText('I have typed this so many times it stopped being a workaround\nand became a personality trait.', {
-    x: 0.9, y: 4.05, w: 11.4, h: 1.1, isTextBox: true, margin: 0,
-    fontFace: SANS, fontSize: 24, color: WHITE, lineSpacingMultiple: 1.15,
-  })
-  kicker(s, '# the motivation, stated honestly', LAVENDER)
-}
-
 // ======================================================== 3. split horizon =
 {
   const s = newSlide(
-    '[0:20] Here is the shape of the problem. One name, two worlds.\n' +
+    '[0:12] Here is the shape of the problem. One name, two worlds.\n' +
     'db.example.net is a real name in a real public zone. On the LAN it resolves to a private IP.\n' +
     'Let\'s Encrypt will happily certify that name — it just has to be able to check you own it.'
   )
@@ -206,15 +201,50 @@ function shot(s, file, o) {
   kicker(s, '# dns-01: prove the name, not the network path')
 }
 
+// ================================================= 3. how acme works =======
+{
+  const s = newSlide(
+    '[0:32] Quick recap of how ACME actually works, because the whole talk hangs off it.\n' +
+    'A CA will certify any name you can prove you control, and there are three ways to prove it: ' +
+    'serve a token over HTTP, answer a special TLS handshake, or publish a TXT record.\n' +
+    'Only the last one works when the CA can never reach the box.'
+  )
+  badge(s, 2)
+  title(s, 'How ACME actually works')
+  s.addText('A CA will certify any name you can prove you control. Three ways to prove it:', {
+    x: 0.72, y: 1.25, w: 12, h: 0.5, isTextBox: true, margin: 0,
+    fontFace: SANS, fontSize: 20, color: INK,
+  })
+  const ch = [
+    { k: 'http-01', t: 'Serve a token', b: 'Put it at /.well-known/acme-challenge/… and the CA fetches it over port 80.', c: BORDER },
+    { k: 'tls-alpn-01', t: 'Answer a handshake', b: 'The token rides inside a special TLS handshake on 443. No HTTP server needed. (RFC 8737)', c: BORDER },
+    { k: 'dns-01', t: 'Publish a TXT record', b: 'At _acme-challenge.<name>. The CA looks it up. Nothing of yours has to be reachable at all.', c: JADE },
+  ]
+  ch.forEach((o, i) => {
+    const x = 0.65 + i * 4.08
+    card(s, {
+      x, y: 1.95, w: 3.86, h: 3.05, border: o.c,
+      eyebrow: o.k.toUpperCase(), eyebrowColor: o.c === JADE ? JADE : VIOLET,
+      head: o.t, headSize: 20, headH: 0.55,
+      body: o.b, bodyColor: INK,
+    })
+  })
+  s.addText('Your LAN host can never answer the first two from the internet. So: dns-01.', {
+    x: 0.65, y: 5.25, w: 12, h: 0.55, isTextBox: true, margin: 0,
+    fontFace: SANS, fontSize: 22, bold: true, color: VIOLET,
+  })
+  kicker(s, '# the CA never has to see your host — only your proof')
+}
+
 // ======================================================= 4. prerequisite ===
 {
   const s = newSlide(
-    '[0:36] One prerequisite, and it is not negotiable: the names on your LAN have to be real, public names. ' +
+    '[0:54] One prerequisite, and it is not negotiable: the names on your LAN have to be real, public names. ' +
     'No .local, no .internal, no .lan — a public CA will not certify a name nobody owns.\n' +
     'The good news is that split-horizon DNS stopped being painful. unbound and dnsmasq will override just the ' +
     'names you host and pass the rest of the zone straight through.'
   )
-  badge(s, 2)
+  badge(s, 3)
   title(s, 'The one prerequisite')
   s.addText('Your internal names have to be public names.', {
     x: 0.9, y: 1.28, w: 11.8, h: 0.85, isTextBox: true, margin: 0,
@@ -248,11 +278,11 @@ function shot(s, file, o) {
 // ====================================================== 4. usual answers ===
 {
   const s = newSlide(
-    '[0:50] The three usual answers, and why I stopped liking all of them.\n' +
+    '[1:12] The three usual answers, and why I stopped liking all of them.\n' +
     'Tokens everywhere: a zone-wide credential on a printer. Private CA: now distribute a root to every device ' +
-    'anyone ever brings. Self-signed: see the previous slide.'
+    'anyone ever brings. Self-signed: every browser warning you have ever clicked through.'
   )
-  badge(s, 3)
+  badge(s, 4)
   title(s, 'The three usual answers')
   const y = 1.62, h = 3.9, w = 3.86
   card(s, {
@@ -268,50 +298,19 @@ function shot(s, file, o) {
   card(s, {
     x: 8.81, y, w, h, eyebrow: 'OPTION C', eyebrowColor: CORAL,
     head: 'Self-signed and\nlook away', headH: 1.05, headSize: 22,
-    body: 'The industry standard.\n\nSee the previous slide.',
+    body: 'The industry standard.\n\nEvery browser warning you have clicked through, and every one you have taught somebody else to click through.',
+  })
+  s.addText('* Yes — you can shrink that token by delegating _acme-challenge to a zone of its own. Hold that thought; we come back to it.', {
+    x: 0.65, y: 5.7, w: 12, h: 0.45, isTextBox: true, margin: 0,
+    fontFace: SANS, fontSize: 15, italic: true, color: MUTED,
   })
   kicker(s, '# all three work. none of them made me happy.')
-}
-
-// ============================================================== 5. stats ===
-{
-  const s = newSlide(
-    '[1:04] The numbers that made me build it. Zero of my LAN appliances will ever run an ACME client. ' +
-    'One machine should hold the DNS credential. And the renewal has to be automatic, because 90 days comes around fast.'
-  )
-  badge(s, 4)
-  title(s, 'Why I built it anyway', { color: INK })
-  const stats = [
-    { n: '0', l: 'appliances that will\never run certbot', c: CORAL },
-    { n: '1', l: 'machine holding your\nDNS credentials', c: ACCENT },
-    { n: '90', l: 'days, renewed forever,\nwithout me', c: JADE },
-  ]
-  stats.forEach((st, i) => {
-    const x = 0.65 + i * 4.08
-    s.addShape(pres.ShapeType.roundRect, {
-      x, y: 1.7, w: 3.86, h: 3.1, rectRadius: 0.09,
-      fill: { color: CARD }, line: { color: CARD_ALT, width: 1 }, shadow: shadow(),
-    })
-    s.addText(st.n, {
-      x, y: 1.9, w: 3.86, h: 1.5, isTextBox: true, margin: 0,
-      fontFace: SANS, fontSize: 80, bold: true, color: st.c, align: 'center', valign: 'middle',
-    })
-    s.addText(st.l, {
-      x: x + 0.3, y: 3.5, w: 3.26, h: 1.1, isTextBox: true, margin: 0,
-      fontFace: SANS, fontSize: 16, color: MUTED, align: 'center', valign: 'top', lineSpacingMultiple: 1.15,
-    })
-  })
-  s.addText('ESXi. iDRAC. The core switch. The NAS. The printer. None of them will ever pip install anything.', {
-    x: 0.65, y: 5.2, w: 12, h: 0.6, isTextBox: true, margin: 0,
-    fontFace: SANS, fontSize: 20, color: INK,
-  })
-  kicker(s, '# the printer has never installed anything. the printer barely prints.')
 }
 
 // =============================================================== 6. idea ===
 {
   const s = newSlide(
-    '[1:14] The idea is one sentence: be an ACME server on the inside, and an ACME client on the outside.\n' +
+    '[1:32] The idea is one sentence: be an ACME server on the inside, and an ACME client on the outside.\n' +
     'Your clients change exactly one thing — the directory URL.'
   )
   badge(s, 5)
@@ -336,7 +335,7 @@ function shot(s, file, o) {
 // ======================================================= 7. architecture ===
 {
   const s = newSlide(
-    '[1:24] The architecture. Client talks ACME to me over the LAN and proves control with http-01 or tls-alpn-01. ' +
+    '[1:48] The architecture. Client talks ACME to me over the LAN and proves control with http-01 or tls-alpn-01. ' +
     'I turn around, open an order at the real CA for the same names, and prove control with DNS-01 — writing the TXT ' +
     'into a zone I delegated for exactly this.\n' +
     'Only this one box holds a DNS credential, and it is a small one.'
@@ -408,7 +407,7 @@ function shot(s, file, o) {
 // ================================================================ 8. CSR ===
 {
   const s = newSlide(
-    '[1:50] This is the one design decision that actually matters.\n' +
+    '[2:18] This is the one design decision that actually matters.\n' +
     'At finalize, the client sends me its CSR. I do not generate a key. I forward that same CSR upstream. ' +
     'So the cert that comes back matches the private key that never left the client.'
   )
@@ -438,140 +437,73 @@ function shot(s, file, o) {
   kicker(s, '# a proxy that generated its own keys would be a very expensive self-signed cert')
 }
 
-// ===================================================== 9. downstream/up ====
+// ============================================== 9. where the creds live ====
 {
   const s = newSlide(
-    '[2:04] Two challenge conversations, and they are completely independent.\n' +
-    'Downstream — proving to me, on the LAN — is http-01 or tls-alpn-01, so a box that only speaks TLS is fine.\n' +
-    'Upstream — proving to Let\'s Encrypt — is DNS-01 by default, or edge http-01 if you are actually publicly reachable.'
+    '[2:38] So where do the DNS credentials live? Three options, and they get better on two axes at once: ' +
+    'how much a leaked credential can do, and how many places you have to go when you rotate it.\n' +
+    'Option two — CNAME _acme-challenge at a zone of its own — is the trick I promised you earlier. ' +
+    'Option three is this project: keep that narrow credential, and put it in exactly one place.'
   )
   badge(s, 8)
-  title(s, 'Two challenges, two directions')
-  card(s, {
-    x: 0.65, y: 1.55, w: 5.9, h: 4.0, eyebrow: 'DOWNSTREAM  ·  PROVE IT TO ME', eyebrowColor: VIOLET_MID,
-    head: 'http-01\ntls-alpn-01', headMono: true, headSize: 26, headH: 1.15, headColor: INK,
-    body: 'Port 80 if the box has a web server.\n\nRFC 8737 over port 443 if it does not — the challenge rides in the TLS handshake itself.\n\nWhichever listener the appliance already has.',
+  title(s, 'Where the DNS credentials live')
+  const opts = [
+    {
+      c: CORAL, e: 'OPTION 1',
+      h: 'Zone creds,\nevery host',
+      b: 'A token that can rewrite the whole zone — your MX, your website — copied onto every box that needs a cert.\n\nRotating means touching all of them.',
+    },
+    {
+      c: VIOLET, e: 'OPTION 2',
+      h: 'Delegated creds,\nevery host',
+      b: 'CNAME _acme-challenge to a zone of its own, so the token can only write there.\n\nMuch smaller blast radius. Still on every box, still rotated everywhere.',
+    },
+    {
+      c: JADE, e: 'OPTION 3  ·  ACME-LAN',
+      h: 'Delegated creds,\none host',
+      b: 'The same narrow token, held in one place. Every other box speaks plain ACME and holds nothing at all.\n\nRotate it once.',
+    },
+  ]
+  opts.forEach((o, i) => {
+    const x = 0.65 + i * 4.08
+    card(s, {
+      x, y: 1.45, w: 3.86, h: 3.85, border: o.c,
+      eyebrow: o.e, eyebrowColor: o.c,
+      head: o.h, headSize: 21, headH: 1.0,
+      body: o.b, bodyColor: INK, bodySize: 14,
+    })
   })
-  card(s, {
-    x: 6.78, y: 1.55, w: 5.9, h: 4.0, eyebrow: 'UPSTREAM  ·  PROVE IT TO THEM', eyebrowColor: ACCENT,
-    head: 'dns-01\nhttp-01 at the edge', headMono: true, headSize: 26, headH: 1.15, headColor: INK,
-    body: 'dns-01 (default): nothing needs to be publicly reachable. Ever.\n\nedge http-01: faster than DNS propagation, but you need a public IP and a wildcard A record.\n\nOne env var switches it.',
+  s.addText([
+    { text: 'Two axes at once: ', options: { color: INK } },
+    { text: 'what a leaked credential can do, and how many places you have to fix.', options: { color: VIOLET, bold: true } },
+  ], {
+    x: 0.65, y: 5.55, w: 12, h: 0.55, isTextBox: true, margin: 0, fontFace: SANS, fontSize: 21,
   })
-  kicker(s, 'ACME_LAN_UPSTREAM_CHALLENGE=dns-01')
+  kicker(s, '# the CNAME is the good idea. one holder for it is the better one.')
 }
 
-// ================================================== 10. it is always DNS ===
+// ============================================== 10. extras divider =========
 {
   const s = newSlide(
-    '[2:18] So DNS-01 it is. Which leaves one box holding a token that can rewrite your entire zone. ' +
-    'That is better than thirty-seven copies of it. It is still worth making that token as small as you can.',
+    '[3:08] That is the whole core idea. Everything after this is scope creep I am happy about.',
     VIOLET
   )
-  s.addText('It’s always DNS.', {
-    x: 0.85, y: 1.55, w: 11.8, h: 1.2, isTextBox: true, margin: 0,
-    fontFace: SANS, fontSize: 62, bold: true, color: LIME, valign: 'middle',
-  })
-  s.addText('The protocol designers agreed with you so completely\nthey made a whole challenge type out of it.', {
-    x: 0.9, y: 2.95, w: 11.6, h: 1.0, isTextBox: true, margin: 0,
-    fontFace: SANS, fontSize: 22, color: LAVENDER, lineSpacingMultiple: 1.15,
-  })
-  s.addShape(pres.ShapeType.roundRect, {
-    x: 0.85, y: 4.35, w: 11.8, h: 1.5, rectRadius: 0.09,
-    fill: { color: VIOLET_DEEP }, line: { color: CORAL, width: 2 },
-  })
-  s.addText('But now one box holds a token that can rewrite your whole zone.', {
-    x: 1.2, y: 4.6, w: 11.1, h: 0.45, isTextBox: true, margin: 0,
-    fontFace: SANS, fontSize: 24, bold: true, color: WHITE,
-  })
-  s.addText('Better than thirty-seven copies of it. Still worth scoping down as far as your provider lets you.', {
-    x: 1.2, y: 5.12, w: 11.1, h: 0.45, isTextBox: true, margin: 0,
-    fontFace: SANS, fontSize: 17, color: LAVENDER,
-  })
-}
-
-// ================================================== 11. delegate challenge =
-{
-  const s = newSlide(
-    '[2:26] And you can make it very small, without any new software.\n' +
-    'CNAME the _acme-challenge record for each name at a zone you delegate. Every CA follows that CNAME — ' +
-    'it is how DNS-01 was designed to be used. acme-lan then only needs a token that can write in the ' +
-    'delegated zone, and nothing at all in your real one.'
+  divider(
+    s,
+    'That’s the core.',
+    'Everything after this is scope creep I’m happy about —\nand the reason I actually still run it.',
+    '# extras'
   )
-  badge(s, 9)
-  title(s, 'Delegate the challenge, not the zone')
-  s.addShape(pres.ShapeType.roundRect, {
-    x: 0.65, y: 1.45, w: 12.03, h: 1.15, rectRadius: 0.08,
-    fill: { color: CARD_ALT }, line: { color: BORDER, width: 1 },
-  })
-  s.addText('_acme-challenge.db.example.net.   CNAME   db.acme-delegated.example.net.', {
-    x: 1.0, y: 1.45, w: 11.4, h: 1.15, isTextBox: true, margin: 0,
-    fontFace: MONO, fontSize: 17, bold: true, color: VIOLET_DEEP, valign: 'middle',
-  })
-  card(s, {
-    x: 0.65, y: 2.85, w: 5.9, h: 2.5, border: JADE,
-    eyebrow: 'WHAT ACME-LAN HOLDS', eyebrowColor: JADE,
-    head: 'One narrow token', headSize: 22, headH: 0.55,
-    body: 'Write access to the delegated zone only. Nothing in the zone that runs your mail, your website or your MX records.',
-    bodyColor: INK,
-  })
-  card(s, {
-    x: 6.78, y: 2.85, w: 5.9, h: 2.5, border: BORDER,
-    eyebrow: 'WHAT YOUR CLIENTS DO', eyebrowColor: VIOLET,
-    head: 'Nothing different', headSize: 22, headH: 0.55,
-    body: 'The CA follows the CNAME on its own. It is in the spec, every provider supports it, and no client ever finds out.',
-    bodyColor: INK,
-  })
-  s.addText('One record per name, set once. That is the whole blast-radius story.', {
-    x: 0.65, y: 5.55, w: 12, h: 0.55, isTextBox: true, margin: 0,
-    fontFace: SANS, fontSize: 21, bold: true, color: VIOLET,
-  })
-  kicker(s, '# works with cloudflare, route53, or whatever already runs your zone')
-}
-
-// ============================================== 12. where acme-dns fits ====
-{
-  const s = newSlide(
-    '[2:50] Which brings us to acme-dns, because someone always asks.\n' +
-    'It is a purpose-built DNS server for exactly this: register once, one CNAME, POST the TXT to /update, ' +
-    'and removal is a no-op because it expires records itself. acme-lan ships a provider for it.\n' +
-    'But be honest: once you have delegated _acme-challenge, acme-dns buys you the same blast radius for ' +
-    'an internet-facing DNS server you now run forever. Use it if you already have one.'
-  )
-  badge(s, 10)
-  title(s, 'Where acme-dns fits')
-  card(s, {
-    x: 0.65, y: 1.5, w: 5.9, h: 3.3, border: VIOLET,
-    eyebrow: 'SUPPORTED, AND GENUINELY NEAT', eyebrowColor: VIOLET,
-    head: 'A DNS server with one opinion', headSize: 21, headH: 0.55,
-    body: 'Register once, add the CNAME, and acme-lan POSTs each TXT value to /update. Removal is a no-op — acme-dns expires them itself.',
-    bodyColor: INK,
-  })
-  card(s, {
-    x: 6.78, y: 1.5, w: 5.9, h: 3.3, border: CORAL,
-    eyebrow: 'WHAT IT ADDS OVER A PLAIN CNAME', eyebrowColor: CORAL,
-    head: 'An internet-facing DNS server', headSize: 21, headH: 0.55,
-    body: 'One more service to run, patch and monitor — and on its own it needs clients that speak acme-dns, which most appliances never will.',
-    bodyColor: INK,
-  })
-  s.addText('Same blast radius as the CNAME you already made. More moving parts.', {
-    x: 0.65, y: 5.0, w: 12, h: 0.5, isTextBox: true, margin: 0,
-    fontFace: SANS, fontSize: 21, bold: true, color: INK,
-  })
-  s.addText('It is an alternative architecture, not an upgrade. Configure it if you already run acme-dns; otherwise delegate and move on.', {
-    x: 0.65, y: 5.6, w: 12, h: 0.5, isTextBox: true, margin: 0,
-    fontFace: SANS, fontSize: 19, color: VIOLET,
-  })
-  kicker(s, 'ACME_LAN_DNS_PROVIDER=acmedns   # or cloudflare, if you would rather not')
 }
 
 // ======================================================= 13. device push ===
 {
   const s = newSlide(
-    '[3:06] Second half of the project: the things that will never run an ACME client at all.\n' +
+    '[3:14] Extra number one: the things that will never run an ACME client at all.\n' +
     'Register the box as a managed host and acme-lan does issuance, installation and renewal for it.\n' +
     'Preferred mode: we fetch a CSR the DEVICE generated, sign it, and push back only the certificate.'
   )
-  badge(s, 11)
+  badge(s, 9)
   title(s, 'For the things that will never run ACME')
   card(s, {
     x: 0.65, y: 1.5, w: 5.9, h: 3.5, border: JADE,
@@ -595,10 +527,10 @@ function shot(s, file, o) {
 // ======================================================== 14. dashboard ====
 {
   const s = newSlide(
-    '[3:24] And yes, it has a dashboard. Every issued cert, what it is for, which device it was pushed to, ' +
+    '[3:36] And yes, it has a dashboard. Every issued cert, what it is for, which device it was pushed to, ' +
     'and a live health badge — not what the database thinks, what the endpoint is actually serving right now.'
   )
-  badge(s, 12)
+  badge(s, 10)
   title(s, 'It comes with a dashboard')
   s.addText([
     { text: 'Every certificate, every managed host, one page.\n\n', options: { color: INK, fontSize: 19 } },
@@ -616,10 +548,10 @@ function shot(s, file, o) {
 // ===================================================== 15. live health =====
 {
   const s = newSlide(
-    '[3:34] The health column is the bit I use most. It opens a raw TLS connection and reads the leaf certificate — ' +
+    '[3:52] The health column is the bit I use most. It opens a raw TLS connection and reads the leaf certificate — ' +
     'so it works for LDAPS and SMTPS, not just HTTPS. Ten days left on the ESXi box, and it tells me before the ticket does.'
   )
-  badge(s, 13)
+  badge(s, 11)
   title(s, 'Live health, not a spreadsheet')
   shot(s, 'certs-table.png', { x: 0.7, y: 1.35, w: 11.93, h: 2.76 })
   shot(s, 'probe.png', { x: 0.7, y: 4.4, w: 5.5, h: 2.37 })
@@ -633,69 +565,51 @@ function shot(s, file, o) {
   })
 }
 
-// ======================================================== 16. add host =====
+// ================================================ 14. should you use it ====
 {
   const s = newSlide(
-    '[3:46] Adding a device used to be a raw JSON blob in a text box. Now plugins declare their config as ' +
-    'PluginFields and the modal renders exactly the right form — and it changes as you switch plugin or CSR mode.'
+    '[4:08] Should you use it? Maybe! Which is a stronger answer than it sounds.\n' +
+    'If your hosts reach the internet and can hold DNS credentials, you do not need me. But if you want ' +
+    'delegated DNS-01 with the clients you already have, the alternative — as far as I know — is standing up ' +
+    'acme-dns, and that is more work than this.'
   )
-  badge(s, 14)
-  title(s, 'Adding a device shouldn’t be a JSON blob')
-  s.addText([
-    { text: 'Plugins declare their own config.\n\n', options: { fontSize: 21, bold: true, color: ACCENT } },
-    { text: 'fields: ClassVar[list[PluginField]]\n\n', options: { fontSize: 14, color: VIOLET_DEEP, fontFace: MONO } },
-    { text: 'The dashboard reads them from the API and renders the real form — filtered by the plugin you picked and the CSR mode you chose.\n\n', options: { fontSize: 16, color: MUTED } },
-    { text: 'Write a plugin, get a UI. No frontend involved.', options: { fontSize: 17, color: INK } },
-  ], {
-    x: 0.72, y: 1.55, w: 4.45, h: 4.6, isTextBox: true, margin: 0,
-    fontFace: SANS, valign: 'top', lineSpacingMultiple: 1.15,
-  })
-  shot(s, 'add-host-modal.png', { x: 5.52, y: 1.35, w: 7.2, h: 5.06 })
-  kicker(s, '# GET /api/deploy-plugins -> the form builds itself')
-}
-
-// ==================================================== 17. alternatives =====
-{
-  const s = newSlide(
-    '[3:56 — if you are behind, this is the slide to cut] Be honest about alternatives. Most people in this room do NOT need this. ' +
-    'If your hosts can reach the internet and hold DNS credentials, use certbot with a DNS plugin and go and enjoy the hallway track.'
-  )
-  badge(s, 15)
-  title(s, 'Should you use this? Probably not.')
+  badge(s, 12)
+  title(s, 'Should you use this? Maybe!')
   const rows = [
-    ['Hosts reach the internet and can hold DNS creds', 'certbot + a DNS plugin. Go home.', MUTED],
-    ['Happy to run a private CA and push a root everywhere', 'step-ca / smallstep. Genuinely excellent.', MUTED],
-    ['Every client can speak acme-dns natively', 'acme-dns on its own — if you like running authoritative DNS.', MUTED],
-    ['One reverse proxy fronts everything you own', 'Caddy or Traefik. Two lines of config.', MUTED],
-    ['Appliances that can’t run ACME, split-horizon names, one place to see it all', '…fine. That one is this.', ACCENT],
+    ['Your hosts reach the internet and can hold DNS creds', 'certbot + a DNS plugin. You don’t need me.', false],
+    ['One reverse proxy already fronts everything you own', 'Caddy or Traefik. Two lines of config.', false],
+    ['Happy to run a private CA and push a root everywhere', 'step-ca / smallstep. Genuinely excellent.', false],
+    ['You want delegated DNS-01 — with the clients you already have', 'This. The alternative is standing up acme-dns.', true],
   ]
-  rows.forEach(([l, r, c], i) => {
-    const y = 1.5 + i * 1.02
-    const last = i === rows.length - 1
+  rows.forEach(([l, r, last], i) => {
+    const y = 1.55 + i * 1.16
     s.addShape(pres.ShapeType.roundRect, {
-      x: 0.65, y, w: 12.03, h: 0.86, rectRadius: 0.07,
-      fill: { color: last ? CARD_ALT : CARD }, line: { color: last ? ACCENT : CARD_ALT, width: last ? 2 : 1 },
+      x: 0.65, y, w: 12.03, h: 0.98, rectRadius: 0.07,
+      fill: { color: last ? CARD_ALT : CARD }, line: { color: last ? VIOLET : BORDER, width: last ? 2 : 1 },
     })
     s.addText(l, {
-      x: 0.95, y, w: 6.0, h: 0.86, isTextBox: true, margin: 0,
+      x: 0.95, y, w: 6.1, h: 0.98, isTextBox: true, margin: 0,
       fontFace: SANS, fontSize: 15, color: last ? INK : MUTED, valign: 'middle',
     })
     s.addText(r, {
-      x: 7.15, y, w: 5.35, h: 0.86, isTextBox: true, margin: 0,
-      fontFace: SANS, fontSize: 16, bold: true, color: c === ACCENT ? ACCENT : INK, valign: 'middle',
+      x: 7.25, y, w: 5.25, h: 0.98, isTextBox: true, margin: 0,
+      fontFace: SANS, fontSize: 16, bold: true, color: last ? VIOLET : INK, valign: 'middle',
     })
   })
-  kicker(s, '# a talk that tells you not to use the software is still a talk')
+  s.addText('It is at least easier than the thing I would otherwise be telling you to build.', {
+    x: 0.65, y: 6.25, w: 12, h: 0.45, isTextBox: true, margin: 0,
+    fontFace: SANS, fontSize: 17, italic: true, color: MUTED,
+  })
 }
 
 // ========================================================= 18. the python ==
 {
   const s = newSlide(
-    '[4:12] The Python, quickly. FastAPI and async SQLAlchemy, Alembic migrations that run on container start. ' +
+    '[4:26] The Python, quickly. FastAPI and async SQLAlchemy, Alembic migrations that run on container start. ' +
     'The upstream client is certbot\'s own acme library — the reference implementation is right there on PyPI. ' +
     'And the end-to-end tests run against Pebble, a real ACME CA that issues deliberately awful certificates.'
   )
-  badge(s, 16)
+  badge(s, 13)
   title(s, 'The Python bits')
   const items = [
     ['FastAPI + async SQLAlchemy', 'One app. RFC 8555 endpoints, REST API, and the SPA, all from one process.'],
@@ -723,46 +637,10 @@ function shot(s, file, o) {
   kicker(s, '# uv sync && uv run acme-lan')
 }
 
-// =========================================================== 19. lessons ===
-{
-  const s = newSlide(
-    '[4:24] Three things I would tell past me. Forward the CSR — everything else follows from that. ' +
-    'Stay on Let\'s Encrypt staging longer than you think. And no plaintext private keys at rest, ever, ' +
-    'even the ones you generated yourself.'
-  )
-  badge(s, 17)
-  title(s, 'Three things I’d tell past me')
-  const lessons = [
-    ['Forward the CSR.', 'Everything else in the design falls out of that one decision.', ACCENT],
-    ['Stay on staging longer.', 'Rate limits are a patient and thorough teacher.', JADE],
-    ['No plaintext keys at rest.', 'Fernet in the DB, or Key Vault, or Vault. Never a file on disk.', VIOLET_MID],
-  ]
-  lessons.forEach(([h, b, c], i) => {
-    const y = 1.6 + i * 1.62
-    s.addShape(pres.ShapeType.roundRect, {
-      x: 0.65, y, w: 12.03, h: 1.35, rectRadius: 0.08, fill: { color: CARD }, line: { color: CARD_ALT, width: 1 },
-    })
-    s.addShape(pres.ShapeType.ellipse, { x: 1.0, y: y + 0.45, w: 0.45, h: 0.45, fill: { color: c } })
-    s.addText(String(i + 1), {
-      x: 1.0, y: y + 0.45, w: 0.45, h: 0.45, isTextBox: true, margin: 0,
-      fontFace: SANS, fontSize: 16, bold: true, color: WHITE, align: 'center', valign: 'middle',
-    })
-    s.addText(h, {
-      x: 1.7, y: y + 0.2, w: 10.6, h: 0.5, isTextBox: true, margin: 0,
-      fontFace: SANS, fontSize: 24, bold: true, color: INK, valign: 'middle',
-    })
-    s.addText(b, {
-      x: 1.7, y: y + 0.72, w: 10.6, h: 0.45, isTextBox: true, margin: 0,
-      fontFace: SANS, fontSize: 16, color: MUTED, valign: 'middle',
-    })
-  })
-  kicker(s, '# the staging environment exists because I do')
-}
-
 // ============================================================ 20. try it ===
 {
   const s = newSlide(
-    '[4:38] One docker run, defaults to Let\'s Encrypt staging so you cannot hurt yourself. MIT, on GitHub.\n' +
+    '[4:42] One docker run, defaults to Let\'s Encrypt staging so you cannot hurt yourself. MIT, on GitHub.\n' +
     'Thank you — no questions, lightning talk rules — but I will be in the hallway and my printer finally has a valid certificate.',
     VIOLET
   )
@@ -797,6 +675,73 @@ function shot(s, file, o) {
     x: 0.85, y: 5.65, w: 11.8, h: 1.0, isTextBox: true, margin: 0,
     fontFace: SANS, fontSize: 19, italic: true, color: LIME, lineSpacingMultiple: 1.15,
   })
+}
+
+// ============================================== 17. appendix divider =======
+{
+  const s = newSlide(
+    '[appendix] Do not present these. They are here for the hallway conversation afterwards.',
+    VIOLET
+  )
+  divider(
+    s,
+    'Appendix',
+    'Prior art, and the bit about challenge directions\nthat did not fit in five minutes.',
+    '# for the hallway track'
+  )
+}
+
+// ================================================= 18. prior art ===========
+{
+  const s = newSlide(
+    '[appendix] Prior art. acme-dns is a tiny DNS server whose entire job is answering _acme-challenge — ' +
+    'a lovely idea, but it is an internet-facing DNS server to run, and clients have to speak acme-dns, ' +
+    'which most appliances never will.\n' +
+    'acme2certifier is an ACME server that fronts other CAs through ca_handler plugins; that is where ' +
+    'acme-lan\'s private-CA handler comes from. Neither did the split-horizon and device-push half I wanted, ' +
+    'so acme-lan borrows from both.'
+  )
+  title(s, 'Prior art I borrowed from')
+  card(s, {
+    x: 0.65, y: 1.5, w: 5.9, h: 3.6, border: VIOLET,
+    eyebrow: 'ACME-DNS', eyebrowColor: VIOLET,
+    head: 'A DNS server with one opinion', headSize: 21, headH: 0.55,
+    body: 'Its entire job is answering _acme-challenge, and it expires its own records. Lovely idea — but it is an internet-facing DNS server you run, and clients have to speak acme-dns. Most appliances never will.\n\nacme-lan ships a provider for it anyway.',
+    bodyColor: INK,
+  })
+  card(s, {
+    x: 6.78, y: 1.5, w: 5.9, h: 3.6, border: VIOLET,
+    eyebrow: 'ACME2CERTIFIER', eyebrowColor: VIOLET,
+    head: 'ACME in front of other CAs', headSize: 21, headH: 0.55,
+    body: 'Fronts a CA that is not Let’s Encrypt through ca_handler plugins. That is exactly where acme-lan’s private-CA handler comes from.\n\nBut it does not do the split-horizon or device-push half.',
+    bodyColor: INK,
+  })
+  s.addText('Both solve part of it. Neither solved it the way I wanted — so this borrows from both.', {
+    x: 0.65, y: 5.35, w: 12, h: 0.55, isTextBox: true, margin: 0,
+    fontFace: SANS, fontSize: 21, bold: true, color: VIOLET,
+  })
+  kicker(s, '# appendix · standing on shoulders, then wandering off')
+}
+
+// ===================================================== 9. downstream/up ====
+{
+  const s = newSlide(
+    '[appendix] Two challenge conversations, and they are completely independent.\n' +
+    'Downstream — proving to me, on the LAN — is http-01 or tls-alpn-01, so a box that only speaks TLS is fine.\n' +
+    'Upstream — proving to Let\'s Encrypt — is DNS-01 by default, or edge http-01 if you are actually publicly reachable.'
+  )
+  title(s, 'Two challenges, two directions')
+  card(s, {
+    x: 0.65, y: 1.55, w: 5.9, h: 4.0, eyebrow: 'DOWNSTREAM  ·  PROVE IT TO ME', eyebrowColor: VIOLET_MID,
+    head: 'http-01\ntls-alpn-01', headMono: true, headSize: 26, headH: 1.15, headColor: INK,
+    body: 'Port 80 if the box has a web server.\n\nRFC 8737 over port 443 if it does not — the challenge rides in the TLS handshake itself.\n\nWhichever listener the appliance already has.',
+  })
+  card(s, {
+    x: 6.78, y: 1.55, w: 5.9, h: 4.0, eyebrow: 'UPSTREAM  ·  PROVE IT TO THEM', eyebrowColor: ACCENT,
+    head: 'dns-01\nhttp-01 at the edge', headMono: true, headSize: 26, headH: 1.15, headColor: INK,
+    body: 'dns-01 (default): nothing needs to be publicly reachable. Ever.\n\nedge http-01: faster than DNS propagation, but you need a public IP and a wildcard A record.\n\nOne env var switches it.',
+  })
+  kicker(s, '# appendix · ACME_LAN_UPSTREAM_CHALLENGE=dns-01')
 }
 
 await pres.writeFile({ fileName: OUT })

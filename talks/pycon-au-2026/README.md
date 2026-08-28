@@ -1,7 +1,8 @@
 # acme-lan — PyCon AU 2026 lightning talk
 
-A five-minute lightning talk on why acme-lan exists, how it works, what else you could
-use instead, and how it chains to [acme-dns](https://github.com/joohoi/acme-dns).
+A five-minute lightning talk on why acme-lan exists, how it works, where DNS credentials
+should live, and what else you could use instead. Sixteen slides in the talk plus three
+appendix slides (prior art, and the downstream/upstream challenge split) for the hallway.
 
 | File | What it is |
 | --- | --- |
@@ -30,6 +31,8 @@ node src/acme_lan/web/scripts/screenshot.mjs      # dashboard + add-host modal
 
 `certs-table.png`, `hosts-table.png` and `probe.png` are section crops of the same page.
 The probe result is a real handshake against a throwaway local TLS endpoint.
+`add-host-modal.png` and `hosts-table.png` aren't in the current cut of the deck — they're
+there if you want to add a slide back.
 
 ## Colours
 
