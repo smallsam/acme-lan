@@ -1,5 +1,21 @@
 # acme-lan
 
+> [!WARNING]
+> **Personal project — not production-ready.** I run this on my own LAN and it works for
+> me, but it is not hardened, audited, or supported, and it almost certainly still has
+> serious security bugs. It is squarely in the blast radius if it does: it issues real
+> publicly-trusted certificates, holds your DNS provider credentials, and stores logins
+> for the devices it deploys to.
+>
+> Treat that as a concrete warning rather than boilerplate. A review before this repo was
+> made public found two authorization flaws in the ACME endpoints — any client could
+> modify or deactivate another account, and revoke certificates it did not own. Both are
+> fixed, but they sat there unnoticed, so assume others remain.
+>
+> If you run it anyway: keep it on a trusted network, set `ACME_LAN_ADMIN_TOKEN` (the
+> management API is open by default and can export private keys), and read
+> [docs/SECURITY.md](docs/SECURITY.md) first. Issues and fixes are welcome.
+
 An **internal ACME server** for split-horizon LANs. Point standard ACME clients
 (`certbot`, `acme.sh`) at it and they receive **real, publicly-trusted certificates** — even
 for hosts that only exist on your LAN and are never exposed to the internet. For devices that
