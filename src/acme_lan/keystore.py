@@ -55,7 +55,7 @@ def put_material(name: str, value: str) -> None:
         conn.execute(
             text(
                 "INSERT INTO key_material (id, name, cert_pem, key_encrypted, created_at) "
-                "VALUES (:id, :n, '', :e, datetime('now'))"
+                "VALUES (:id, :n, '', :e, CURRENT_TIMESTAMP)"
             ),
             {"id": uuid.uuid4().hex, "n": name, "e": enc},
         )

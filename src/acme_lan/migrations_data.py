@@ -47,7 +47,7 @@ def run_data_migrations(conn: Connection) -> int:
         logger.info("Applying data migration %s", step_id)
         step(conn)
         conn.execute(
-            text("INSERT INTO data_migration (id, applied_at) VALUES (:id, datetime('now'))"),
+            text("INSERT INTO data_migration (id, applied_at) VALUES (:id, CURRENT_TIMESTAMP)"),
             {"id": step_id},
         )
         count += 1
